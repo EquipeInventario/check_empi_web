@@ -7500,8 +7500,8 @@ s=B.d.eD((a-2)/1,0,13)
 r=B.f.eD(B.d.fm(s),0,12)
 q=s-r
 p=1-q
-o=B.qF[r]
-n=B.qF[r+1]
+o=B.qE[r]
+n=B.qE[r+1]
 return new A.ah(p*o.a+q*n.a,p*o.b+q*n.b)},
 aXS(a){var s,r,q,p,o,n,m
 if(a>5){s=a-5
@@ -11738,8 +11738,8 @@ break
 case 5:s=l.a
 s===$&&A.a()
 s=A.bF(A.Bj(s+240),40)
-r=A.bF(A.a4Y(l,B.qD,B.Ny),24)
-q=A.bF(A.a4Y(l,B.qD,B.Nz),32)
+r=A.bF(A.a4Y(l,B.qC,B.Ny),24)
+q=A.bF(A.a4Y(l,B.qC,B.Nz),32)
 p=A.bF(l.a+15,8)
 o=A.bF(l.a+15,12)
 l.d===$&&A.a()
@@ -40216,11 +40216,11 @@ ga1D(){var s=this.a
 if(s instanceof A.fa)return s
 return this.a=new A.fa(s)},
 gazR(){var s,r,q,p,o,n=this
-if(n.c===1)return B.qG
+if(n.c===1)return B.qF
 s=n.d
 r=J.bG(s)
 q=r.gF(s)-J.cz(n.e)-n.f
-if(q===0)return B.qG
+if(q===0)return B.qF
 p=[]
 for(o=0;o<q;++o)p.push(r.h(s,o))
 p.$flags=3
@@ -45771,9 +45771,9 @@ $S:21}
 A.aoE.prototype={
 $2(a,b){var s,r,q="Tipo de m\xe1quina",p="Tipo de garfo",o="Tipo de torre"
 if(b.b<680){s=this.a
-return A.be(A.b([s.QL(),B.b3,s.QM(),B.b3,s.QN(),B.b3,s.lB(q,s.ay,B.qC,B.q1,new A.aow(s)),B.b3,s.lB("Energia",s.ch,B.qJ,B.pZ,new A.aox(s)),B.b3,s.QK(),B.b3,s.lB(p,s.CW,B.qK,B.q0,new A.aoy(s)),B.b3,s.lB(o,s.cx,B.qE,B.q8,new A.aoz(s))],t.p),B.p,B.k,B.m)}s=this.a
+return A.be(A.b([s.QL(),B.b3,s.QM(),B.b3,s.QN(),B.b3,s.lB(q,s.ay,B.qK,B.q1,new A.aow(s)),B.b3,s.lB("Energia",s.ch,B.qI,B.pZ,new A.aox(s)),B.b3,s.QK(),B.b3,s.lB(p,s.CW,B.qJ,B.q0,new A.aoy(s)),B.b3,s.lB(o,s.cx,B.qD,B.q8,new A.aoz(s))],t.p),B.p,B.k,B.m)}s=this.a
 r=t.p
-return A.be(A.b([A.bk(A.b([A.b2(s.QL(),1),B.cH,A.b2(s.QM(),2)],r),B.p,B.k,B.m,0),B.b3,A.bk(A.b([A.b2(s.QN(),1),B.cH,A.b2(s.lB(q,s.ay,B.qC,B.q1,new A.aoA(s)),1)],r),B.p,B.k,B.m,0),B.b3,A.bk(A.b([A.b2(s.lB("Energia",s.ch,B.qJ,B.pZ,new A.aoB(s)),1),B.cH,A.b2(s.QK(),1)],r),B.p,B.k,B.m,0),B.b3,A.bk(A.b([A.b2(s.lB(p,s.CW,B.qK,B.q0,new A.aoC(s)),1),B.cH,A.b2(s.lB(o,s.cx,B.qE,B.q8,new A.aoD(s)),1)],r),B.p,B.k,B.m,0)],r),B.p,B.k,B.m)},
+return A.be(A.b([A.bk(A.b([A.b2(s.QL(),1),B.cH,A.b2(s.QM(),2)],r),B.p,B.k,B.m,0),B.b3,A.bk(A.b([A.b2(s.QN(),1),B.cH,A.b2(s.lB(q,s.ay,B.qK,B.q1,new A.aoA(s)),1)],r),B.p,B.k,B.m,0),B.b3,A.bk(A.b([A.b2(s.lB("Energia",s.ch,B.qI,B.pZ,new A.aoB(s)),1),B.cH,A.b2(s.QK(),1)],r),B.p,B.k,B.m,0),B.b3,A.bk(A.b([A.b2(s.lB(p,s.CW,B.qJ,B.q0,new A.aoC(s)),1),B.cH,A.b2(s.lB(o,s.cx,B.qD,B.q8,new A.aoD(s)),1)],r),B.p,B.k,B.m,0)],r),B.p,B.k,B.m)},
 $S:516}
 A.aow.prototype={
 $1(a){var s=this.a
@@ -60647,7 +60647,7 @@ gDI(){return 14},
 ga9x(){return 48},
 ga9y(){return 40},
 gQ1(){return 52},
-gEe(){return B.qH},
+gEe(){return B.qG},
 gtW(){return 32},
 gtY(){return 52},
 gEm(){return B.Uy},
@@ -65482,8 +65482,8 @@ s=r.U
 r.cS=s==null?null:s.gyp()
 a.a=!1},
 ro(a,b,c){var s,r,q,p,o=this
-o.fL=A.aJy(o.fL,B.qI)
-o.fM=A.aJy(o.fM,B.qI)
+o.fL=A.aJy(o.fL,B.qH)
+o.fM=A.aJy(o.fM,B.qH)
 s=o.fL
 r=s!=null&&!s.ga7(s)
 s=o.fM
@@ -102265,9 +102265,8 @@ B.a2_=new A.my(6,0.11)
 B.a1Y=new A.my(8,0.12)
 B.a1X=new A.my(12,0.14)
 B.qB=s([B.a1W,B.a20,B.a1Z,B.a2_,B.a1Y,B.a1X],A.aw("D<my>"))
-B.qC=s(["EMPILHADEIRA","PALETEIRA","TRANSPALETEIRA","REBOCADOR","OUTRA"],t.s)
-B.qD=s([0,21,51,121,151,191,271,321,360],t.n)
-B.qE=s(["BAIXA","ALTA","DUPLEX","TRIPLEX","OUTRA"],t.s)
+B.qC=s([0,21,51,121,151,191,271,321,360],t.n)
+B.qD=s(["BAIXA","ALTA","DUPLEX","TRIPLEX","OUTRA"],t.s)
 B.Mw=s([-1,0,0,1,0,0,-1,0,1,0,0,0,-1,1,0,1,1,1,1,0],t.n)
 B.Df=new A.KI(2,"outer")
 B.oC=new A.v(0.09803921568627451,0,0,0,B.e)
@@ -102316,7 +102315,7 @@ B.Sq=new A.ah(0.63903989,0.07759639)
 B.S7=new A.ah(0.66416338,0.0734653)
 B.S4=new A.ah(0.68675338,0.06974996)
 B.Sk=new A.ah(0.70678034,0.06529512)
-B.qF=s([B.So,B.Sn,B.Sa,B.Sd,B.Sm,B.S3,B.S8,B.Sb,B.S6,B.Sj,B.Sq,B.S7,B.S4,B.Sk],A.aw("D<+(O,O)>"))
+B.qE=s([B.So,B.Sn,B.Sa,B.Sd,B.Sm,B.S3,B.S8,B.Sb,B.S6,B.Sj,B.Sq,B.S7,B.S4,B.Sk],A.aw("D<+(O,O)>"))
 B.MT=s([35,30,20,25,30,35,30,25,25],t.n)
 B.MX=s(["click","scroll"],t.s)
 B.Eo=new A.mU()
@@ -102324,8 +102323,8 @@ B.ha=new A.Q5(1,"page")
 B.j4=new A.eB(B.b9,B.ha)
 B.MY=s([B.Eo,B.j4],A.aw("D<aY>"))
 B.N7=s([],t.QP)
-B.qH=s([],t.V)
-B.qI=s([],A.aw("D<b27>"))
+B.qG=s([],t.V)
+B.qH=s([],A.aw("D<b27>"))
 B.Nd=s([],t.E)
 B.Nb=s([],t.fJ)
 B.N9=s([],t.ER)
@@ -102342,15 +102341,16 @@ B.Nc=s([],t.AS)
 B.a3M=s([],t.p)
 B.Na=s([],t.n)
 B.N0=s([],t.t)
-B.qG=s([],t.ee)
+B.qF=s([],t.ee)
 B.N6=s([],t.XS)
 B.Ne=s(["S","M","T","W","T","F","S"],t.s)
-B.qJ=s(["ELETRICA","GLP","DIESEL","MANUAL","OUTRA"],t.s)
+B.qI=s(["ELETRICA","GLP","DIESEL","MANUAL","OUTRA"],t.s)
 B.iS=new A.h(0,2)
 B.DV=new A.bm(0.75,B.K,B.oC,B.iS,1.5)
 B.Nk=s([B.DV],t.V)
 B.fN=s([B.d8,B.cr,B.hF,B.hG,B.k0],t.QP)
-B.qK=s(["DUPLO","SIMPLES","TRIPLO","BOBINA","OUTRO"],t.s)
+B.qJ=s(["DUPLO","SIMPLES","TRIPLO","BOBINA","OUTRO"],t.s)
+B.qK=s(["EMPILHADEIRA","PALETEIRA","TRANSPALETEIRA","LAVADORA PISO TRIPULADA","OUTRA"],t.s)
 B.Ns=s([B.d9,B.fb,B.nN,B.hH,B.nO],A.aw("D<iU>"))
 B.Nw=s(["OPERA\xc7\xc3O AMBEV","AUXILIARES","ADMINISTRATIVO"],t.s)
 B.LX=s([0.001200833568784504,0.002389694492170889,0.0002795742885861124],t.n)
@@ -102506,7 +102506,7 @@ B.Qq=new A.h(0,24)
 B.E9=new A.bm(3,B.K,B.cc,B.Qq,38)
 B.E2=new A.bm(8,B.K,B.c_,B.x2,46)
 B.My=s([B.DQ,B.E9,B.E2],t.V)
-B.Pe=new A.cx([0,B.qH,1,B.Nr,2,B.M4,3,B.Nl,4,B.Li,6,B.Mf,8,B.LE,9,B.LT,12,B.Mj,16,B.Mi,24,B.My],A.aw("cx<n,T<bm>>"))
+B.Pe=new A.cx([0,B.qG,1,B.Nr,2,B.M4,3,B.Nl,4,B.Li,6,B.Mf,8,B.LE,9,B.LT,12,B.Mj,16,B.Mi,24,B.My],A.aw("cx<n,T<bm>>"))
 B.cf=new A.f(4294968065)
 B.mF=new A.ac(B.cf,!1,!1,!0,!1,B.q)
 B.c2=new A.f(4294968066)
