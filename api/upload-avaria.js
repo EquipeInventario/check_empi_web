@@ -4,22 +4,37 @@ import fs from 'fs';
 
 export const config = {
   api: {
-    bodyParser: false
-  }
+    bodyParser: false,
+  },
 };
 
+function setCorsHeaders(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization'
+  );
+}
+
 export default async function handler(req, res) {
+  setCorsHeaders(res);
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({
       sucesso: false,
-      erro: 'Método não permitido'
+      erro: 'Método não permitido',
     });
   }
 
   try {
     const form = formidable({
       multiples: false,
-      keepExtensions: true
+      keepExtensions: true,
     });
 
     const [fields, files] = await form.parse(req);
@@ -29,7 +44,7 @@ export default async function handler(req, res) {
     if (!arquivo) {
       return res.status(400).json({
         sucesso: false,
-        erro: 'Nenhum arquivo enviado'
+        erro: 'Nenhum arquivo enviado',
       });
     }
 
@@ -52,20 +67,20 @@ export default async function handler(req, res) {
     const blob = await put(nomeArquivo, buffer, {
       access: 'public',
       contentType: arquivo.mimetype || 'image/jpeg',
-      addRandomSuffix: false
+      addRandomSuffix: false,
     });
 
     return res.status(200).json({
       sucesso: true,
       url: blob.url,
       pathname: blob.pathname,
-      tamanho_bytes: arquivo.size
+      tamanho_bytes: arquivo.size,
     });
   } catch (error) {
     return res.status(500).json({
       sucesso: false,
       erro: 'Erro ao enviar imagem para o Vercel Blob',
-      detalhe: error.message
+      detalhe: error.message,
     });
   }
 }
