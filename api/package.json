@@ -1,0 +1,7 @@
+{
+  "type": "module",
+  "dependencies": {
+    "@vercel/blob": "^1.1.1",
+    "formidable": "^3.5.1"
+  }
+}
