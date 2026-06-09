@@ -76,11 +76,14 @@ export default async function handler(req, res) {
       pathname: blob.pathname,
       tamanho_bytes: arquivo.size,
     });
-  } catch (error) {
+    } catch (error) {
+    console.error('ERRO_UPLOAD_AVARIA:', error);
+
     return res.status(500).json({
       sucesso: false,
       erro: 'Erro ao enviar imagem para o Vercel Blob',
-      detalhe: error.message,
+      detalhe: error?.message || String(error),
+      name: error?.name || null,
     });
   }
 }
