@@ -1,32 +1,32 @@
 {
-    "name": "check_empi_web",
-    "short_name": "check_empi_web",
+    "name": "Gestão de Maquinas MCB",
+    "short_name": "Gestão MCB",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#07120E",
+    "theme_color": "#07120E",
+    "description": "Sistema de gestão operacional de máquinas MCB.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
         {
-            "src": "icons/Icon-192.png",
+            "src": "icons/Icon-192.png?v=mcb2",
             "sizes": "192x192",
             "type": "image/png"
         },
         {
-            "src": "icons/Icon-512.png",
+            "src": "icons/Icon-512.png?v=mcb2",
             "sizes": "512x512",
             "type": "image/png"
         },
         {
-            "src": "icons/Icon-maskable-192.png",
+            "src": "icons/Icon-maskable-192.png?v=mcb2",
             "sizes": "192x192",
             "type": "image/png",
             "purpose": "maskable"
         },
         {
-            "src": "icons/Icon-maskable-512.png",
+            "src": "icons/Icon-maskable-512.png?v=mcb2",
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "maskable"
