@@ -59,16 +59,26 @@ function formatarNumero(valor) {
 function calcularPreventiva(maquina) {
   const horimetroAtual = paraNumero(maquina.horimetro_atual);
   const horimetroManutencao = paraNumero(maquina.horimetro_manutencao);
-  const calcBase = paraNumero(maquina.calc_base);
+  const intervaloPreventiva = paraNumero(maquina.intervalo_preventiva_horas);
+  let proximaManutencao = paraNumero(maquina.prox_manutencao_hora);
 
-  if (horimetroAtual === null || horimetroManutencao === null || calcBase === null) {
+  if (horimetroAtual === null) {
     return null;
   }
 
-  if (calcBase <= 0) return null;
+  if (proximaManutencao === null) {
+    if (horimetroManutencao === null || intervaloPreventiva === null) {
+      return null;
+    }
 
-  const proxima = horimetroManutencao + calcBase;
-  const faltam = proxima - horimetroAtual;
+    if (intervaloPreventiva <= 0) {
+      return null;
+    }
+
+    proximaManutencao = horimetroManutencao + intervaloPreventiva;
+  }
+
+  const faltam = proximaManutencao - horimetroAtual;
 
   if (faltam > ALERTA_PREVENTIVA_HORAS) {
     return null;
@@ -79,8 +89,8 @@ function calcularPreventiva(maquina) {
     descricao: limparTexto(maquina.descricao),
     horimetroAtual,
     horimetroManutencao,
-    calcBase,
-    proxima,
+    intervaloPreventiva,
+    proxima: proximaManutencao,
     faltam,
     vencida: faltam <= 0,
   };
@@ -158,6 +168,12 @@ function montarMensagem({ filialNome, check, pendenciasAbertas, preventivas }) {
       linhas.push(`Atual: ${formatarNumero(preventiva.horimetroAtual)} h`);
       linhas.push(`Próxima: ${formatarNumero(preventiva.proxima)} h`);
 
+      if (preventiva.intervaloPreventiva !== null) {
+        linhas.push(
+          `Intervalo: ${formatarNumero(preventiva.intervaloPreventiva)} h`,
+        );
+      }
+
       if (preventiva.vencida) {
         linhas.push(`Excedeu: ${formatarNumero(Math.abs(preventiva.faltam))} h`);
       } else {
@@ -233,7 +249,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const idFilialFinal = id_filial || check.id_filial;
+    const idFilialFinal = limparTexto(id_filial || check.id_filial);
 
     const { data: pendenciasDoCheck, error: erroPendenciasCheck } =
       await supabase
@@ -255,7 +271,7 @@ export default async function handler(req, res) {
     const { data: maquinaCheck } = await supabase
       .from('maquinas')
       .select(
-        'codigo, descricao, id_filial, horimetro_atual, horimetro_manutencao, calc_base',
+        'codigo, descricao, id_filial, horimetro_atual, horimetro_manutencao, intervalo_preventiva_horas, prox_manutencao_hora',
       )
       .eq('codigo', check.empilhadeira)
       .eq('id_filial', idFilialFinal)
@@ -297,26 +313,25 @@ export default async function handler(req, res) {
       });
     }
 
+    let preventivas = [];
+    let erroPreventiva = null;
+
     const { data: maquinas, error: erroMaquinas } = await supabase
       .from('maquinas')
       .select(
-        'codigo, descricao, id_filial, horimetro_atual, horimetro_manutencao, calc_base',
+        'codigo, descricao, id_filial, horimetro_atual, horimetro_manutencao, intervalo_preventiva_horas, prox_manutencao_hora',
       )
       .eq('id_filial', idFilialFinal)
       .order('codigo', { ascending: true });
 
     if (erroMaquinas) {
-      return res.status(500).json({
-        ok: false,
-        erro: 'Erro ao buscar máquinas para preventiva.',
-        detalhe: erroMaquinas.message,
-      });
+      erroPreventiva = erroMaquinas.message;
+    } else {
+      preventivas = (maquinas || [])
+        .map(calcularPreventiva)
+        .filter(Boolean)
+        .sort((a, b) => a.faltam - b.faltam);
     }
-
-    const preventivas = (maquinas || [])
-      .map(calcularPreventiva)
-      .filter(Boolean)
-      .sort((a, b) => a.faltam - b.faltam);
 
     let filialNome = '';
 
@@ -379,6 +394,7 @@ export default async function handler(req, res) {
       enviado: algumEnviado,
       total_pendencias: pendenciasAbertas?.length || 0,
       total_preventivas: preventivas.length,
+      erro_preventiva: erroPreventiva,
       destinos: envios,
       mensagem,
     });
