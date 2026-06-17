@@ -1,6 +1,7 @@
 {
   "type": "module",
   "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
     "@vercel/blob": "^1.1.1",
     "formidable": "^3.5.1"
   }
