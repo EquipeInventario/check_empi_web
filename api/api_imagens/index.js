@@ -264,9 +264,25 @@ async function gerarUrlTemporaria(req, res) {
     req.query?.formato === 'json';
 
   if (!retornarJson) {
+    const respostaAzure = await fetch(urlTemporaria);
+
+    if (!respostaAzure.ok) {
+      return responder(res, respostaAzure.status, {
+        sucesso: false,
+        erro: 'Nao foi possivel carregar a imagem no Azure Blob.',
+        detalhe: await respostaAzure.text(),
+      });
+    }
+
+    const contentType =
+      respostaAzure.headers.get('content-type') || 'image/jpeg';
+    const arrayBuffer = await respostaAzure.arrayBuffer();
+
     setCorsHeaders(res);
-    res.setHeader('Cache-Control', 'no-store');
-    return res.redirect(302, urlTemporaria);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.setHeader('Content-Disposition', 'inline');
+    return res.status(200).send(Buffer.from(arrayBuffer));
   }
 
   return responder(res, 200, {
