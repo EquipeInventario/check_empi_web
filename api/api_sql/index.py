@@ -73,6 +73,17 @@ TABLES = {
         "bool_columns": ["ativo"],
         "json_columns": [],
     },
+    "setores": {
+        "schema": "check_maquinas",
+        "table": "setores",
+        "pk": "id",
+        "columns": [
+            "id",
+            "setor",
+        ],
+        "bool_columns": [],
+        "json_columns": [],
+    },
     "check_empi": {
         "schema": "check_maquinas",
         "table": "check_empi",
@@ -653,6 +664,11 @@ def buscar_filiais():
             return cur.fetchall()
 
 
+
+
+def buscar_setores():
+    return selecionar("setores", order_by="setor", ascending=True)
+
 def buscar_maquinas(id_filial=""):
     filtros = {}
     if possui_filial(id_filial):
@@ -1005,6 +1021,9 @@ class handler(BaseHTTPRequestHandler):
             if acao == "buscarFiliais":
                 return responder(self, 200, {"sucesso": True, "dados": buscar_filiais()})
 
+            if acao == "buscarSetores":
+                return responder(self, 200, {"sucesso": True, "dados": buscar_setores()})
+
             if acao == "buscarMaquinas":
                 return responder(self, 200, {"sucesso": True, "dados": buscar_maquinas(query_param(query, "idFilial", ""))})
 
@@ -1083,6 +1102,9 @@ class handler(BaseHTTPRequestHandler):
             if acao == "bulkInsert":
                 return responder(self, 200, {"sucesso": True, "dados": inserir_varios(body.get("tabela"), body.get("dados", []))})
 
+            if acao == "inserirSetor":
+                return responder(self, 200, {"sucesso": True, "dados": inserir("setores", body.get("dados", body))})
+
             if acao == "inserirMaquina":
                 return responder(self, 200, {"sucesso": True, "dados": inserir("maquinas", body.get("dados", body))})
 
@@ -1158,6 +1180,10 @@ class handler(BaseHTTPRequestHandler):
                 if body.get("id") is not None and not filtros:
                     filtros = {"id": body.get("id")}
                 return responder(self, 200, {"sucesso": True, "dados": atualizar(body.get("tabela"), body.get("dados", {}), filtros)})
+
+            if acao == "atualizarSetor":
+                id_setor = body.get("idSetor") or body.get("id")
+                return responder(self, 200, {"sucesso": True, "dados": atualizar("setores", body.get("dados", {}), {"id": id_setor})})
 
             if acao == "colocarPendenciaEmAnalise":
                 return responder(self, 200, {"sucesso": True, "dados": colocar_pendencia_em_analise(body.get("idPendencia"))})
