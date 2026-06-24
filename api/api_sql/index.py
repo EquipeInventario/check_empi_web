@@ -73,17 +73,6 @@ TABLES = {
         "bool_columns": ["ativo"],
         "json_columns": [],
     },
-    "setores": {
-        "schema": "check_maquinas",
-        "table": "setores",
-        "pk": "id",
-        "columns": [
-            "id",
-            "setor",
-        ],
-        "bool_columns": [],
-        "json_columns": [],
-    },
     "check_empi": {
         "schema": "check_maquinas",
         "table": "check_empi",
@@ -557,8 +546,12 @@ def inserir(nome_tabela, dados, conn=None):
 
         if close_conn:
             conn.commit()
+            return selecionar_um(nome_tabela, {"id": novo_id}) if novo_id else {"id": novo_id}
 
-        return selecionar_um(nome_tabela, {"id": novo_id}) if novo_id else {"id": novo_id}
+        registro = dict(dados_filtrados)
+        if novo_id:
+            registro["id"] = novo_id
+        return normalizar_linha_saida(nome_tabela, registro)
     except Exception:
         if close_conn:
             conn.rollback()
@@ -663,11 +656,6 @@ def buscar_filiais():
             cur.execute(sql)
             return cur.fetchall()
 
-
-
-
-def buscar_setores():
-    return selecionar("setores", order_by="setor", ascending=True)
 
 def buscar_maquinas(id_filial=""):
     filtros = {}
@@ -944,13 +932,71 @@ def finalizar_turno(id_check, codigo_maquina, id_filial, horimetro_final):
             raise
 
 
+def salvar_check(dados_check):
+    if dados_check is None:
+        dados_check = {}
+
+    if not isinstance(dados_check, dict):
+        raise ValueError("Dados do check invalidos.")
+
+    if not dados_check:
+        raise ValueError("Dados do check nao informados.")
+
+    agora = agora_mysql()
+
+    with conectar() as conn:
+        try:
+            check = inserir("check_empi", dados_check, conn=conn)
+            id_check = check.get("id")
+
+            codigo = dados_check.get("empilhadeira")
+            id_filial = dados_check.get("id_filial")
+            horimetro = dados_check.get("horimetro_inicial")
+
+            if codigo and id_filial and horimetro is not None:
+                atualizar(
+                    "maquinas",
+                    {
+                        "ativo": False,
+                        "horimetro_atual": horimetro,
+                        "ultimo_reg_horimetro": agora,
+                    },
+                    {"codigo": codigo, "id_filial": id_filial},
+                    conn=conn,
+                )
+
+            conn.commit()
+            return {
+                "check": check,
+                "id_check": id_check,
+                "pendencias": [],
+            }
+        except Exception:
+            conn.rollback()
+            raise
+
+
 def salvar_check_com_pendencias(dados_check, pendencias=None):
     """
     Ação transacional opcional para o app mobile.
     Insere check_empi, insere pendências vinculadas ao id_check e marca a máquina como inativa.
     As fotos/anexos continuam no endpoint de imagem + inserirAnexoCheck.
     """
-    pendencias = pendencias or []
+    if dados_check is None:
+        dados_check = {}
+
+    if not isinstance(dados_check, dict):
+        raise ValueError("Dados do check invalidos.")
+
+    if not dados_check:
+        raise ValueError("Dados do check nao informados.")
+
+    if pendencias is None:
+        pendencias = []
+
+    if not isinstance(pendencias, list):
+        raise ValueError("Lista de pendencias invalida.")
+
     agora = agora_mysql()
 
     with conectar() as conn:
@@ -1020,9 +1066,6 @@ class handler(BaseHTTPRequestHandler):
 
             if acao == "buscarFiliais":
                 return responder(self, 200, {"sucesso": True, "dados": buscar_filiais()})
-
-            if acao == "buscarSetores":
-                return responder(self, 200, {"sucesso": True, "dados": buscar_setores()})
 
             if acao == "buscarMaquinas":
                 return responder(self, 200, {"sucesso": True, "dados": buscar_maquinas(query_param(query, "idFilial", ""))})
@@ -1102,9 +1145,6 @@ class handler(BaseHTTPRequestHandler):
             if acao == "bulkInsert":
                 return responder(self, 200, {"sucesso": True, "dados": inserir_varios(body.get("tabela"), body.get("dados", []))})
 
-            if acao == "inserirSetor":
-                return responder(self, 200, {"sucesso": True, "dados": inserir("setores", body.get("dados", body))})
-
             if acao == "inserirMaquina":
                 return responder(self, 200, {"sucesso": True, "dados": inserir("maquinas", body.get("dados", body))})
 
@@ -1120,10 +1160,21 @@ class handler(BaseHTTPRequestHandler):
             if acao == "inserirAnexoCheck":
                 return responder(self, 200, {"sucesso": True, "dados": inserir("check_empi_anexos", body.get("dados", body))})
 
-            if acao == "salvarCheckComPendencias":
+            if acao == "salvarCheck":
+                dados_check = body.get("check") or body.get("dados") or {}
+
                 return responder(self, 200, {
                     "sucesso": True,
-                    "dados": salvar_check_com_pendencias(body.get("check", {}), body.get("pendencias", [])),
+                    "dados": salvar_check(dados_check),
+                })
+
+            if acao == "salvarCheckComPendencias":
+                dados_check = body.get("check") or body.get("dados") or {}
+                pendencias = body.get("pendencias") or []
+
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": salvar_check_com_pendencias(dados_check, pendencias),
                 })
 
             if acao == "carregarBaseOperacional":
@@ -1180,10 +1231,6 @@ class handler(BaseHTTPRequestHandler):
                 if body.get("id") is not None and not filtros:
                     filtros = {"id": body.get("id")}
                 return responder(self, 200, {"sucesso": True, "dados": atualizar(body.get("tabela"), body.get("dados", {}), filtros)})
-
-            if acao == "atualizarSetor":
-                id_setor = body.get("idSetor") or body.get("id")
-                return responder(self, 200, {"sucesso": True, "dados": atualizar("setores", body.get("dados", {}), {"id": id_setor})})
 
             if acao == "colocarPendenciaEmAnalise":
                 return responder(self, 200, {"sucesso": True, "dados": colocar_pendencia_em_analise(body.get("idPendencia"))})
