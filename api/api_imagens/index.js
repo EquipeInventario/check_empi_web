@@ -1,6 +1,6 @@
 import {
-  BlobServiceClient,
   BlobSASPermissions,
+  BlobServiceClient,
   SASProtocol,
   StorageSharedKeyCredential,
   generateBlobSASQueryParameters,
@@ -19,7 +19,7 @@ function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'Content-Type, Authorization, x-checkempi-token, X-API-Token'
+    'Content-Type'
   );
 }
 
@@ -82,42 +82,17 @@ function getAzureConfig() {
     process.env.AZURE_BLOB_CONTAINER || 'check-empi-avarias';
 
   if (!connectionString) {
-    throw new Error('Variável AZURE_STORAGE_CONNECTION_STRING não configurada.');
+    throw new Error('Variavel AZURE_STORAGE_CONNECTION_STRING nao configurada.');
   }
 
   if (!containerName) {
-    throw new Error('Variável AZURE_BLOB_CONTAINER não configurada.');
+    throw new Error('Variavel AZURE_BLOB_CONTAINER nao configurada.');
   }
 
   return {
     connectionString,
     containerName,
   };
-}
-
-/**
- * Token opcional apenas para esta API de imagens.
- * Se API_IMAGENS_TOKEN não existir no Vercel, a rota fica liberada,
- * mantendo compatibilidade com o app atual.
- */
-function validarTokenImagem(req) {
-  const tokenEsperado = String(process.env.API_IMAGENS_TOKEN || '').trim();
-
-  if (!tokenEsperado) {
-    return true;
-  }
-
-  const authorization = String(req.headers.authorization || '').trim();
-  const tokenBearer = authorization.startsWith('Bearer ')
-    ? authorization.replace('Bearer ', '').trim()
-    : '';
-
-  const tokenRecebido =
-    tokenBearer ||
-    String(req.headers['x-api-token'] || '').trim() ||
-    String(req.headers['x-checkempi-token'] || '').trim();
-
-  return tokenRecebido === tokenEsperado;
 }
 
 function criarBlobServiceClient() {
@@ -168,13 +143,6 @@ function criarSasLeitura({ blobName, minutos = 240 }) {
 }
 
 async function uploadImagem(req, res) {
-  if (!validarTokenImagem(req)) {
-    return responder(res, 401, {
-      sucesso: false,
-      erro: 'Token inválido ou ausente.',
-    });
-  }
-
   const { containerName } = getAzureConfig();
 
   const form = formidable({
@@ -219,10 +187,6 @@ async function uploadImagem(req, res) {
   const blobServiceClient = criarBlobServiceClient();
   const containerClient = blobServiceClient.getContainerClient(containerName);
 
-  /**
-   * O container já foi criado no Azure.
-   * Mesmo assim, createIfNotExists evita erro se subir em outro ambiente novo.
-   */
   await containerClient.createIfNotExists();
 
   const blockBlobClient = containerClient.getBlockBlobClient(nomeArquivo);
@@ -236,13 +200,9 @@ async function uploadImagem(req, res) {
   try {
     fs.unlinkSync(arquivo.filepath);
   } catch (_) {
-    // Não bloqueia o upload caso o temporário não seja apagado.
+    // Nao bloqueia o upload caso o temporario nao seja apagado.
   }
 
-  /**
-   * Como o container está privado, a URL direta do blob não abre sozinha.
-   * Por isso retornamos também uma URL temporária de leitura.
-   */
   const urlTemporaria = criarSasLeitura({
     blobName: nomeArquivo,
     minutos: Number(process.env.AZURE_BLOB_SAS_MINUTES || 240),
@@ -253,20 +213,12 @@ async function uploadImagem(req, res) {
 
   return responder(res, 200, {
     sucesso: true,
-
-    /**
-     * Campos mantidos para compatibilidade com o app atual.
-     */
     url: urlVisualizacao,
     url_publica: urlVisualizacao,
     pathname: nomeArquivo,
     caminho_arquivo: nomeArquivo,
     tamanho_bytes: arquivo.size || buffer.length,
     content_type: contentType,
-
-    /**
-     * Campos novos para controle/migração Azure.
-     */
     storage_origem: 'AZURE',
     container_azure: containerName,
     blob_azure: nomeArquivo,
@@ -277,13 +229,6 @@ async function uploadImagem(req, res) {
 }
 
 async function gerarUrlTemporaria(req, res) {
-  if (!validarTokenImagem(req)) {
-    return responder(res, 401, {
-      sucesso: false,
-      erro: 'Token inválido ou ausente.',
-    });
-  }
-
   const blob =
     req.query?.blob ||
     req.query?.pathname ||
@@ -297,7 +242,9 @@ async function gerarUrlTemporaria(req, res) {
     });
   }
 
-  const minutos = Number(req.query?.minutos || process.env.AZURE_BLOB_SAS_MINUTES || 240);
+  const minutos = Number(
+    req.query?.minutos || process.env.AZURE_BLOB_SAS_MINUTES || 240
+  );
 
   const urlTemporaria = criarSasLeitura({
     blobName: String(blob),
@@ -307,8 +254,19 @@ async function gerarUrlTemporaria(req, res) {
   if (!urlTemporaria) {
     return responder(res, 500, {
       sucesso: false,
-      erro: 'Não foi possível gerar URL temporária. Verifique a connection string.',
+      erro: 'Nao foi possivel gerar URL temporaria. Verifique a connection string.',
     });
+  }
+
+  const retornarJson =
+    req.query?.json === '1' ||
+    req.query?.json === 'true' ||
+    req.query?.formato === 'json';
+
+  if (!retornarJson) {
+    setCorsHeaders(res);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.redirect(302, urlTemporaria);
   }
 
   return responder(res, 200, {
@@ -339,7 +297,7 @@ export default async function handler(req, res) {
 
     return responder(res, 405, {
       sucesso: false,
-      erro: 'Método não permitido. Use POST para enviar imagem ou GET para gerar URL temporária.',
+      erro: 'Metodo nao permitido. Use POST para enviar imagem ou GET para gerar URL temporaria.',
     });
   } catch (error) {
     console.error('ERRO_API_IMAGENS_AZURE:', error);
