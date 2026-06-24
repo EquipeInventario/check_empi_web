@@ -48,7 +48,6 @@ TABLES = {
             "id_perfil_emp",
             "tipo_torre",
             "carga_atual",
-            "ultima_carga_realizada",
         ],
         "bool_columns": ["adaptada_bobina", "ativo", "possui_gdi"],
         "json_columns": [],
