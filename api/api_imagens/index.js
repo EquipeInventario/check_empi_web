@@ -1,7 +1,6 @@
 import {
   BlobSASPermissions,
   BlobServiceClient,
-  SASProtocol,
   StorageSharedKeyCredential,
   generateBlobSASQueryParameters,
 } from '@azure/storage-blob';
@@ -14,12 +13,16 @@ export const config = {
   },
 };
 
+const PASTA_PADRAO = 'avarias';
+const CONTAINER_PADRAO = 'check-empi-avarias';
+const LIMITE_UPLOAD_MB = Number(process.env.AZURE_UPLOAD_MAX_MB || 20);
+
 function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'Content-Type'
+    'Content-Type, Authorization, X-API-Token, x-checkempi-token',
   );
 }
 
@@ -33,7 +36,7 @@ function limparBaseUrl(url) {
 }
 
 function getCampo(fields, nome, padrao = '') {
-  const valor = fields[nome];
+  const valor = fields?.[nome];
 
   if (Array.isArray(valor)) {
     return valor[0]?.toString() || padrao;
@@ -42,8 +45,18 @@ function getCampo(fields, nome, padrao = '') {
   return valor?.toString() || padrao;
 }
 
+function getCampoAlternativo(fields, nomes, padrao = '') {
+  for (const nome of nomes) {
+    const valor = getCampo(fields, nome, '');
+    if (String(valor || '').trim()) return valor;
+  }
+  return padrao;
+}
+
 function normalizarTexto(texto) {
   return String(texto || '')
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -52,13 +65,13 @@ function normalizarTexto(texto) {
     .replace(/^_|_$/g, '');
 }
 
-// api_imagens: define a extensao correta para fotos e videos enviados pelo app.
 function obterExtensao(mimetype, nomeArquivo = '') {
   const tipo = String(mimetype || '').toLowerCase();
   const nome = String(nomeArquivo || '').toLowerCase();
 
   if (tipo.includes('image/png') || nome.endsWith('.png')) return 'png';
   if (tipo.includes('image/webp') || nome.endsWith('.webp')) return 'webp';
+  if (tipo.includes('image/gif') || nome.endsWith('.gif')) return 'gif';
   if (tipo.includes('video/webm') || nome.endsWith('.webm')) return 'webm';
   if (tipo.includes('video/quicktime') || nome.endsWith('.mov')) return 'mov';
   if (tipo.includes('video/mp4') || nome.endsWith('.mp4')) return 'mp4';
@@ -66,21 +79,45 @@ function obterExtensao(mimetype, nomeArquivo = '') {
   return 'jpg';
 }
 
-// api_imagens: fallback de content-type quando o multipart chegar como octet-stream.
 function contentTypePorExtensao(extensao) {
   if (extensao === 'png') return 'image/png';
   if (extensao === 'webp') return 'image/webp';
+  if (extensao === 'gif') return 'image/gif';
   if (extensao === 'webm') return 'video/webm';
   if (extensao === 'mov') return 'video/quicktime';
   if (extensao === 'mp4') return 'video/mp4';
   return 'image/jpeg';
 }
 
-// api_imagens: pastas virtuais permitidas dentro do container check-empi-avarias.
 function obterPastaUpload(pasta) {
-  const pastaLimpa = normalizarTexto(pasta || 'avarias') || 'avarias';
-  const permitidas = new Set(['avarias', 'pos_conferencia', 'pos_uso']);
-  return permitidas.has(pastaLimpa) ? pastaLimpa : 'avarias';
+  const pastaLimpa = normalizarTexto(pasta || PASTA_PADRAO) || PASTA_PADRAO;
+
+  const aliases = {
+    avaria: 'avarias',
+    avarias: 'avarias',
+    pendencia: 'avarias',
+    pendencias: 'avarias',
+
+    pos_conferencia: 'pos_conferencia',
+    posconferencia: 'pos_conferencia',
+    pos_conf: 'pos_conferencia',
+    posconf: 'pos_conferencia',
+    conferencia: 'pos_conferencia',
+    checklist: 'pos_conferencia',
+    check: 'pos_conferencia',
+    foto_checklist: 'pos_conferencia',
+    foto_pos_conferencia: 'pos_conferencia',
+
+    pos_uso: 'pos_uso',
+    posuso: 'pos_uso',
+    uso: 'pos_uso',
+    finalizacao: 'pos_uso',
+    finalizacao_turno: 'pos_uso',
+    pos_turno: 'pos_uso',
+    foto_pos_uso: 'pos_uso',
+  };
+
+  return aliases[pastaLimpa] || PASTA_PADRAO;
 }
 
 function extrairValorConnectionString(connectionString, chave) {
@@ -103,15 +140,14 @@ function extrairValorConnectionString(connectionString, chave) {
 
 function getAzureConfig() {
   const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
-  const containerName =
-    process.env.AZURE_BLOB_CONTAINER || 'check-empi-avarias';
+  const containerName = process.env.AZURE_BLOB_CONTAINER || CONTAINER_PADRAO;
 
   if (!connectionString) {
-    throw new Error('Variavel AZURE_STORAGE_CONNECTION_STRING nao configurada.');
+    throw new Error('Variável AZURE_STORAGE_CONNECTION_STRING não configurada.');
   }
 
   if (!containerName) {
-    throw new Error('Variavel AZURE_BLOB_CONTAINER nao configurada.');
+    throw new Error('Variável AZURE_BLOB_CONTAINER não configurada.');
   }
 
   return {
@@ -128,14 +164,8 @@ function criarBlobServiceClient() {
 function criarSasLeitura({ blobName, minutos = 240 }) {
   const { connectionString, containerName } = getAzureConfig();
 
-  const accountName = extrairValorConnectionString(
-    connectionString,
-    'AccountName'
-  );
-  const accountKey = extrairValorConnectionString(
-    connectionString,
-    'AccountKey'
-  );
+  const accountName = extrairValorConnectionString(connectionString, 'AccountName');
+  const accountKey = extrairValorConnectionString(connectionString, 'AccountKey');
 
   if (!accountName || !accountKey) {
     return null;
@@ -154,17 +184,48 @@ function criarSasLeitura({ blobName, minutos = 240 }) {
       permissions: BlobSASPermissions.parse('r'),
       startsOn,
       expiresOn,
-      protocol: SASProtocol.Https,
     },
-    credential
+    credential,
   ).toString();
 
   const accountUrl = limparBaseUrl(
     extrairValorConnectionString(connectionString, 'BlobEndpoint') ||
-      `https://${accountName}.blob.core.windows.net`
+      `https://${accountName}.blob.core.windows.net`,
   );
 
   return `${accountUrl}/${containerName}/${encodeURI(blobName)}?${sas}`;
+}
+
+function getBasePublica(req) {
+  const envUrl = limparBaseUrl(process.env.API_IMAGENS_PUBLIC_BASE_URL);
+  if (envUrl) return envUrl;
+
+  const vercelUrl = limparBaseUrl(process.env.VERCEL_URL);
+  if (vercelUrl) return vercelUrl.startsWith('http') ? vercelUrl : `https://${vercelUrl}`;
+
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  const proto = req.headers['x-forwarded-proto'] || 'https';
+
+  if (!host) return 'https://check-empi-web.vercel.app';
+
+  return `${proto}://${host}`;
+}
+
+function criarUrlVisualizacaoApi(req, blobName) {
+  const base = getBasePublica(req);
+  return `${base}/api/api_imagens?blob=${encodeURIComponent(blobName)}`;
+}
+
+function obterArquivo(files) {
+  const camposPossiveis = ['file', 'arquivo', 'imagem', 'foto', 'media', 'midia'];
+
+  for (const campo of camposPossiveis) {
+    const valor = files?.[campo];
+    if (!valor) continue;
+    return Array.isArray(valor) ? valor[0] : valor;
+  }
+
+  return null;
 }
 
 async function uploadImagem(req, res) {
@@ -173,35 +234,45 @@ async function uploadImagem(req, res) {
   const form = formidable({
     multiples: false,
     keepExtensions: true,
-    maxFileSize: 8 * 1024 * 1024,
+    maxFileSize: Math.max(1, LIMITE_UPLOAD_MB) * 1024 * 1024,
   });
 
   const [fields, files] = await form.parse(req);
-
-  const arquivo = Array.isArray(files.file) ? files.file[0] : files.file;
+  const arquivo = obterArquivo(files);
 
   if (!arquivo) {
     return responder(res, 400, {
       sucesso: false,
-      erro: 'Nenhum arquivo enviado no campo file.',
+      erro: 'Nenhum arquivo enviado. Use o campo multipart file, arquivo, imagem, foto ou media.',
     });
   }
 
   const empilhadeira = getCampo(fields, 'empilhadeira', 'sem_empilhadeira');
-  const idCheck = getCampo(fields, 'id_check', 'sem_check');
+  const idCheck = getCampoAlternativo(fields, ['id_check', 'idCheck', 'check_id'], 'sem_check');
+  const idFilial = getCampoAlternativo(fields, ['id_filial', 'idFilial'], '');
   const categoria = getCampo(fields, 'categoria', 'geral');
   const item = getCampo(fields, 'item', 'item');
-  const pastaUpload = obterPastaUpload(getCampo(fields, 'pasta', 'avarias'));
+  const pastaUpload = obterPastaUpload(
+    getCampoAlternativo(fields, ['pasta', 'folder', 'tipo_pasta', 'tipoMidia', 'tipo_midia'], PASTA_PADRAO),
+  );
 
   const buffer = fs.readFileSync(arquivo.filepath);
+
+  if (!buffer.length) {
+    return responder(res, 400, {
+      sucesso: false,
+      erro: 'Arquivo recebido está vazio.',
+    });
+  }
 
   const agora = new Date();
   const ano = agora.getFullYear();
   const mes = String(agora.getMonth() + 1).padStart(2, '0');
 
-  const categoriaLimpa = normalizarTexto(categoria);
-  const itemLimpo = normalizarTexto(item);
-  const empilhadeiraLimpa = normalizarTexto(empilhadeira);
+  const categoriaLimpa = normalizarTexto(categoria) || 'geral';
+  const itemLimpo = normalizarTexto(item) || 'item';
+  const empilhadeiraLimpa = normalizarTexto(empilhadeira) || 'sem_empilhadeira';
+  const idCheckLimpo = normalizarTexto(idCheck) || 'sem_check';
 
   const extensao = obterExtensao(arquivo.mimetype, arquivo.originalFilename);
   const contentType =
@@ -211,12 +282,14 @@ async function uploadImagem(req, res) {
 
   const nomeArquivo =
     `${pastaUpload}/${ano}/${mes}/emp_${empilhadeiraLimpa}/` +
-    `check_${idCheck}_${categoriaLimpa}_${itemLimpo}_${Date.now()}.${extensao}`;
+    `check_${idCheckLimpo}_${categoriaLimpa}_${itemLimpo}_${Date.now()}.${extensao}`;
 
   const blobServiceClient = criarBlobServiceClient();
   const containerClient = blobServiceClient.getContainerClient(containerName);
 
-  await containerClient.createIfNotExists();
+  if (String(process.env.AZURE_CREATE_CONTAINER_IF_MISSING || 'true').toLowerCase() !== 'false') {
+    await containerClient.createIfNotExists();
+  }
 
   const blockBlobClient = containerClient.getBlockBlobClient(nomeArquivo);
 
@@ -224,26 +297,38 @@ async function uploadImagem(req, res) {
     blobHTTPHeaders: {
       blobContentType: contentType,
     },
+    metadata: {
+      origem: 'check_empi',
+      pasta: pastaUpload,
+      id_check: idCheckLimpo,
+      id_filial: normalizarTexto(idFilial),
+      empilhadeira: empilhadeiraLimpa,
+      categoria: categoriaLimpa,
+      item: itemLimpo,
+    },
   });
 
   try {
     fs.unlinkSync(arquivo.filepath);
   } catch (_) {
-    // Nao bloqueia o upload caso o temporario nao seja apagado.
+    // Não bloqueia o retorno se o temporário não puder ser removido.
   }
 
+  const minutosSas = Number(process.env.AZURE_BLOB_SAS_MINUTES || 240);
   const urlTemporaria = criarSasLeitura({
     blobName: nomeArquivo,
-    minutos: Number(process.env.AZURE_BLOB_SAS_MINUTES || 240),
+    minutos: minutosSas,
   });
 
-  const urlDiretaAzure = blockBlobClient.url;
-  const urlVisualizacao = urlTemporaria || urlDiretaAzure;
+  const urlAzureDireta = blockBlobClient.url;
+  const urlVisualizacaoApi = criarUrlVisualizacaoApi(req, nomeArquivo);
 
   return responder(res, 200, {
     sucesso: true,
-    url: urlVisualizacao,
-    url_publica: urlVisualizacao,
+    mensagem: 'Mídia salva no Azure Blob Storage.',
+    url: urlVisualizacaoApi,
+    url_publica: urlVisualizacaoApi,
+    url_visualizacao: urlVisualizacaoApi,
     pathname: nomeArquivo,
     caminho_arquivo: nomeArquivo,
     tamanho_bytes: arquivo.size || buffer.length,
@@ -252,8 +337,10 @@ async function uploadImagem(req, res) {
     pasta_azure: pastaUpload,
     container_azure: containerName,
     blob_azure: nomeArquivo,
-    url_azure: urlDiretaAzure,
+    url_azure: urlAzureDireta,
     url_temporaria: urlTemporaria,
+    url_sas: urlTemporaria,
+    expira_em_minutos: urlTemporaria ? minutosSas : null,
     migrado_azure: 1,
   });
 }
@@ -266,25 +353,30 @@ async function gerarUrlTemporaria(req, res) {
     req.query?.blob_azure;
 
   if (!blob) {
-    return responder(res, 400, {
-      sucesso: false,
-      erro: 'Informe o caminho do blob em ?blob=...',
+    return responder(res, 200, {
+      sucesso: true,
+      mensagem: 'API de imagens ativa. Use POST para enviar mídia ou GET com ?blob=... para visualizar.',
+      rotas: {
+        upload: 'POST /api/api_imagens',
+        visualizar: 'GET /api/api_imagens?blob=CAMINHO_DO_BLOB',
+        json: 'GET /api/api_imagens?blob=CAMINHO_DO_BLOB&json=1',
+      },
+      pastas_permitidas: ['avarias', 'pos_conferencia', 'pos_uso'],
     });
   }
 
-  const minutos = Number(
-    req.query?.minutos || process.env.AZURE_BLOB_SAS_MINUTES || 240
-  );
+  const blobName = String(blob);
+  const minutos = Number(req.query?.minutos || process.env.AZURE_BLOB_SAS_MINUTES || 240);
 
   const urlTemporaria = criarSasLeitura({
-    blobName: String(blob),
+    blobName,
     minutos,
   });
 
   if (!urlTemporaria) {
     return responder(res, 500, {
       sucesso: false,
-      erro: 'Nao foi possivel gerar URL temporaria. Verifique a connection string.',
+      erro: 'Não foi possível gerar URL temporária. Verifique se a connection string possui AccountName e AccountKey.',
     });
   }
 
@@ -293,36 +385,39 @@ async function gerarUrlTemporaria(req, res) {
     req.query?.json === 'true' ||
     req.query?.formato === 'json';
 
-  if (!retornarJson) {
-    const respostaAzure = await fetch(urlTemporaria);
+  const urlVisualizacaoApi = criarUrlVisualizacaoApi(req, blobName);
 
-    if (!respostaAzure.ok) {
-      return responder(res, respostaAzure.status, {
-        sucesso: false,
-        erro: 'Nao foi possivel carregar a m?dia no Azure Blob.',
-        detalhe: await respostaAzure.text(),
-      });
-    }
-
-    const contentType =
-      respostaAzure.headers.get('content-type') || 'image/jpeg';
-    const arrayBuffer = await respostaAzure.arrayBuffer();
-
-    setCorsHeaders(res);
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'private, max-age=300');
-    res.setHeader('Content-Disposition', 'inline');
-    return res.status(200).send(Buffer.from(arrayBuffer));
+  if (retornarJson) {
+    return responder(res, 200, {
+      sucesso: true,
+      blob_azure: blobName,
+      url: urlVisualizacaoApi,
+      url_publica: urlVisualizacaoApi,
+      url_visualizacao: urlVisualizacaoApi,
+      url_temporaria: urlTemporaria,
+      url_sas: urlTemporaria,
+      expira_em_minutos: minutos,
+    });
   }
 
-  return responder(res, 200, {
-    sucesso: true,
-    blob_azure: String(blob),
-    url: urlTemporaria,
-    url_publica: urlTemporaria,
-    url_temporaria: urlTemporaria,
-    expira_em_minutos: minutos,
-  });
+  const respostaAzure = await fetch(urlTemporaria);
+
+  if (!respostaAzure.ok) {
+    return responder(res, respostaAzure.status, {
+      sucesso: false,
+      erro: 'Não foi possível carregar a mídia no Azure Blob.',
+      detalhe: await respostaAzure.text(),
+    });
+  }
+
+  const contentType = respostaAzure.headers.get('content-type') || 'application/octet-stream';
+  const arrayBuffer = await respostaAzure.arrayBuffer();
+
+  setCorsHeaders(res);
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  res.setHeader('Content-Disposition', 'inline');
+  return res.status(200).send(Buffer.from(arrayBuffer));
 }
 
 export default async function handler(req, res) {
@@ -343,14 +438,14 @@ export default async function handler(req, res) {
 
     return responder(res, 405, {
       sucesso: false,
-      erro: 'Metodo nao permitido. Use POST para enviar imagem ou GET para gerar URL temporaria.',
+      erro: 'Método não permitido. Use POST para enviar mídia ou GET para visualizar mídia salva.',
     });
   } catch (error) {
     console.error('ERRO_API_IMAGENS_AZURE:', error);
 
     return responder(res, 500, {
       sucesso: false,
-      erro: 'Erro ao processar m?dia no Azure Blob Storage.',
+      erro: 'Erro ao processar mídia no Azure Blob Storage.',
       detalhe: error?.message || String(error),
       name: error?.name || null,
     });
