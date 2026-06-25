@@ -52,10 +52,35 @@ function normalizarTexto(texto) {
     .replace(/^_|_$/g, '');
 }
 
-function obterExtensao(mimetype) {
-  if (mimetype === 'image/png') return 'png';
-  if (mimetype === 'image/webp') return 'webp';
+// api_imagens: define a extensao correta para fotos e videos enviados pelo app.
+function obterExtensao(mimetype, nomeArquivo = '') {
+  const tipo = String(mimetype || '').toLowerCase();
+  const nome = String(nomeArquivo || '').toLowerCase();
+
+  if (tipo.includes('image/png') || nome.endsWith('.png')) return 'png';
+  if (tipo.includes('image/webp') || nome.endsWith('.webp')) return 'webp';
+  if (tipo.includes('video/webm') || nome.endsWith('.webm')) return 'webm';
+  if (tipo.includes('video/quicktime') || nome.endsWith('.mov')) return 'mov';
+  if (tipo.includes('video/mp4') || nome.endsWith('.mp4')) return 'mp4';
+
   return 'jpg';
+}
+
+// api_imagens: fallback de content-type quando o multipart chegar como octet-stream.
+function contentTypePorExtensao(extensao) {
+  if (extensao === 'png') return 'image/png';
+  if (extensao === 'webp') return 'image/webp';
+  if (extensao === 'webm') return 'video/webm';
+  if (extensao === 'mov') return 'video/quicktime';
+  if (extensao === 'mp4') return 'video/mp4';
+  return 'image/jpeg';
+}
+
+// api_imagens: pastas virtuais permitidas dentro do container check-empi-avarias.
+function obterPastaUpload(pasta) {
+  const pastaLimpa = normalizarTexto(pasta || 'avarias') || 'avarias';
+  const permitidas = new Set(['avarias', 'pos_conferencia', 'pos_uso']);
+  return permitidas.has(pastaLimpa) ? pastaLimpa : 'avarias';
 }
 
 function extrairValorConnectionString(connectionString, chave) {
@@ -166,6 +191,7 @@ async function uploadImagem(req, res) {
   const idCheck = getCampo(fields, 'id_check', 'sem_check');
   const categoria = getCampo(fields, 'categoria', 'geral');
   const item = getCampo(fields, 'item', 'item');
+  const pastaUpload = obterPastaUpload(getCampo(fields, 'pasta', 'avarias'));
 
   const buffer = fs.readFileSync(arquivo.filepath);
 
@@ -177,11 +203,14 @@ async function uploadImagem(req, res) {
   const itemLimpo = normalizarTexto(item);
   const empilhadeiraLimpa = normalizarTexto(empilhadeira);
 
-  const contentType = arquivo.mimetype || 'image/jpeg';
-  const extensao = obterExtensao(contentType);
+  const extensao = obterExtensao(arquivo.mimetype, arquivo.originalFilename);
+  const contentType =
+    arquivo.mimetype && arquivo.mimetype !== 'application/octet-stream'
+      ? arquivo.mimetype
+      : contentTypePorExtensao(extensao);
 
   const nomeArquivo =
-    `avarias/${ano}/${mes}/emp_${empilhadeiraLimpa}/` +
+    `${pastaUpload}/${ano}/${mes}/emp_${empilhadeiraLimpa}/` +
     `check_${idCheck}_${categoriaLimpa}_${itemLimpo}_${Date.now()}.${extensao}`;
 
   const blobServiceClient = criarBlobServiceClient();
@@ -220,6 +249,7 @@ async function uploadImagem(req, res) {
     tamanho_bytes: arquivo.size || buffer.length,
     content_type: contentType,
     storage_origem: 'AZURE',
+    pasta_azure: pastaUpload,
     container_azure: containerName,
     blob_azure: nomeArquivo,
     url_azure: urlDiretaAzure,
@@ -269,7 +299,7 @@ async function gerarUrlTemporaria(req, res) {
     if (!respostaAzure.ok) {
       return responder(res, respostaAzure.status, {
         sucesso: false,
-        erro: 'Nao foi possivel carregar a imagem no Azure Blob.',
+        erro: 'Nao foi possivel carregar a m?dia no Azure Blob.',
         detalhe: await respostaAzure.text(),
       });
     }
@@ -320,7 +350,7 @@ export default async function handler(req, res) {
 
     return responder(res, 500, {
       sucesso: false,
-      erro: 'Erro ao processar imagem no Azure Blob Storage.',
+      erro: 'Erro ao processar m?dia no Azure Blob Storage.',
       detalhe: error?.message || String(error),
       name: error?.name || null,
     });
