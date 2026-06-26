@@ -72,6 +72,21 @@ TABLES = {
         "bool_columns": ["ativo"],
         "json_columns": [],
     },
+    "operador": {
+        "schema": "check_maquinas",
+        "table": "operador",
+        "pk": "id",
+        "columns": [
+            "id",
+            "matricula",
+            "nome",
+            "id_filial",
+            "filial",
+            "apto",
+        ],
+        "bool_columns": [],
+        "json_columns": [],
+    },
     "check_empi": {
         "schema": "check_maquinas",
         "table": "check_empi",
@@ -656,6 +671,23 @@ def buscar_filiais():
             return cur.fetchall()
 
 
+def buscar_operador_por_matricula(matricula=""):
+    texto = str(matricula or "").strip()
+    if not texto:
+        return {}
+
+    sql = """
+        SELECT `id`, `matricula`, `nome`, `id_filial`, `filial`, `apto`
+        FROM `check_maquinas`.`operador`
+        WHERE `matricula` = %s
+        LIMIT 1
+    """
+    with conectar() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, [texto])
+            row = cur.fetchone()
+            return dict(row) if row else {}
+
 def buscar_maquinas(id_filial=""):
     filtros = {}
     if possui_filial(id_filial):
@@ -1065,6 +1097,8 @@ class handler(BaseHTTPRequestHandler):
 
             if acao == "buscarFiliais":
                 return responder(self, 200, {"sucesso": True, "dados": buscar_filiais()})
+            if acao in ["buscarOperadorPorMatricula", "buscarOperador"]:
+                return responder(self, 200, {"sucesso": True, "dados": buscar_operador_por_matricula(query_param(query, "matricula", ""))})
 
             if acao == "buscarMaquinas":
                 return responder(self, 200, {"sucesso": True, "dados": buscar_maquinas(query_param(query, "idFilial", ""))})
