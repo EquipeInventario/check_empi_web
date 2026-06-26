@@ -203,6 +203,21 @@ TABLES = {
         "bool_columns": ["migrado_azure"],
         "json_columns": [],
     },
+    "operador": {
+        "schema": "check_maquinas",
+        "table": "operador",
+        "pk": "id",
+        "columns": [
+            "id",
+            "matricula",
+            "nome",
+            "id_filial",
+            "filial",
+            "apto",
+        ],
+        "bool_columns": [],
+        "json_columns": [],
+    },
 }
 
 ANEXOS_SELECT = [
@@ -656,6 +671,31 @@ def buscar_filiais():
             return cur.fetchall()
 
 
+
+
+def buscar_operadores(id_filial="", apto=""):
+    filtros = {}
+    if possui_filial(id_filial):
+        filtros["id_filial"] = id_filial
+    if str(apto or "").strip():
+        filtros["apto"] = str(apto).strip().upper()
+    return selecionar("operador", filtros=filtros, order_by="nome", ascending=True)
+
+
+def buscar_operador_por_matricula(matricula, id_filial=""):
+    filtros = {"matricula": matricula}
+    if possui_filial(id_filial):
+        filtros["id_filial"] = id_filial
+    return selecionar_um("operador", filtros)
+
+
+def buscar_operador_por_id(id_operador, id_filial=""):
+    filtros = {"id": id_operador}
+    if possui_filial(id_filial):
+        filtros["id_filial"] = id_filial
+    return selecionar_um("operador", filtros)
+
+
 def buscar_maquinas(id_filial=""):
     filtros = {}
     if possui_filial(id_filial):
@@ -1066,6 +1106,15 @@ class handler(BaseHTTPRequestHandler):
             if acao == "buscarFiliais":
                 return responder(self, 200, {"sucesso": True, "dados": buscar_filiais()})
 
+            if acao == "buscarOperadores":
+                return responder(self, 200, {"sucesso": True, "dados": buscar_operadores(query_param(query, "idFilial", ""), query_param(query, "apto", ""))})
+
+            if acao == "buscarOperadorPorMatricula":
+                return responder(self, 200, {"sucesso": True, "dados": buscar_operador_por_matricula(query_param(query, "matricula", ""), query_param(query, "idFilial", ""))})
+
+            if acao == "buscarOperadorPorId":
+                return responder(self, 200, {"sucesso": True, "dados": buscar_operador_por_id(query_param(query, "idOperador", ""), query_param(query, "idFilial", ""))})
+
             if acao == "buscarMaquinas":
                 return responder(self, 200, {"sucesso": True, "dados": buscar_maquinas(query_param(query, "idFilial", ""))})
 
@@ -1146,6 +1195,12 @@ class handler(BaseHTTPRequestHandler):
 
             if acao == "inserirMaquina":
                 return responder(self, 200, {"sucesso": True, "dados": inserir("maquinas", body.get("dados", body))})
+
+            if acao == "inserirOperador":
+                return responder(self, 200, {"sucesso": True, "dados": inserir("operador", body.get("dados", body))})
+
+            if acao == "inserirOperadores":
+                return responder(self, 200, {"sucesso": True, "dados": inserir_varios("operador", body.get("dados", body.get("operadores", [])))})
 
             if acao == "inserirCheck":
                 return responder(self, 200, {"sucesso": True, "dados": inserir("check_empi", body.get("dados", body))})
@@ -1230,6 +1285,16 @@ class handler(BaseHTTPRequestHandler):
                 if body.get("id") is not None and not filtros:
                     filtros = {"id": body.get("id")}
                 return responder(self, 200, {"sucesso": True, "dados": atualizar(body.get("tabela"), body.get("dados", {}), filtros)})
+
+            if acao == "atualizarOperador":
+                filtros = body.get("filtros", {})
+                if body.get("idOperador") is not None and not filtros:
+                    filtros = {"id": body.get("idOperador")}
+                elif body.get("matricula") is not None and not filtros:
+                    filtros = {"matricula": body.get("matricula")}
+                    if body.get("idFilial") is not None:
+                        filtros["id_filial"] = body.get("idFilial")
+                return responder(self, 200, {"sucesso": True, "dados": atualizar("operador", body.get("dados", {}), filtros)})
 
             if acao == "colocarPendenciaEmAnalise":
                 return responder(self, 200, {"sucesso": True, "dados": colocar_pendencia_em_analise(body.get("idPendencia"))})
