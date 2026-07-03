@@ -248,10 +248,10 @@ TABLES = {
         "table": "plano_manutencao_liberacao",
         "pk": "id",
         "columns": [
-            "id", "id_plano", "checklist_json", "resultado_liberacao",
-            "observacao_final", "liberado_por", "data_liberacao",
-            "assinatura_nome", "assinatura_usuario", "criado_em",
-            "atualizado_em",
+            "id", "id_plano", "id_check", "id_pendencia", "codigo_maquina",
+            "checklist_json", "resultado_liberacao", "observacao_final",
+            "liberado_por", "data_liberacao", "assinatura_nome",
+            "assinatura_usuario", "criado_em", "atualizado_em",
         ],
         "bool_columns": [],
         "json_columns": ["checklist_json"],
@@ -1240,6 +1240,50 @@ def salvar_plano_manutencao(payload):
     return carregar_plano_manutencao(id_plano)
 
 
+def concluir_liberacao_manutencao(payload):
+    payload = dict(payload or {})
+    liberacao = dict(payload.get("liberacao") or {})
+    resultado = str(liberacao.get("resultado_liberacao") or "").strip().upper()
+    id_pendencia = liberacao.get("id_pendencia")
+    codigo_maquina = str(liberacao.get("codigo_maquina") or "").strip()
+    responsavel = str(liberacao.get("liberado_por") or "").strip()
+    observacao = liberacao.get("observacao_final")
+
+    if resultado != "LIBERADO":
+        raise ValueError("A conclusao exige resultado LIBERADO.")
+    if not id_pendencia:
+        raise ValueError("A liberacao precisa estar vinculada a uma pendencia.")
+    if not codigo_maquina:
+        raise ValueError("A liberacao precisa identificar o equipamento.")
+    if not responsavel:
+        raise ValueError("Informe o mecanico responsavel pela liberacao.")
+
+    detalhe = salvar_plano_manutencao(payload)
+    resolver_pendencia(id_pendencia, responsavel, agora_mysql(), observacao)
+
+    id_filial = (payload.get("plano") or {}).get("id_filial", "")
+    pendencias = buscar_pendencias_da_maquina(codigo_maquina, id_filial)
+    pendencias_abertas = []
+    for pendencia in pendencias:
+        status = str(pendencia.get("status_pendencia") or "").strip().upper()
+        resolvido = pendencia.get("resolvido") is True
+        if not resolvido and status not in [
+            "RESOLVIDA", "SOLUCIONADA", "FINALIZADA", "FECHADA", "CANCELADA"
+        ]:
+            pendencias_abertas.append(pendencia)
+
+    maquina_liberada = len(pendencias_abertas) == 0
+    if maquina_liberada:
+        liberar_maquina(codigo_maquina, id_filial)
+
+    return {
+        **(detalhe or {}),
+        "pendencia_resolvida": True,
+        "maquina_liberada": maquina_liberada,
+        "pendencias_abertas_restantes": len(pendencias_abertas),
+    }
+
+
 # ============================================================
 # HANDLER VERCEL
 # ============================================================
@@ -1402,6 +1446,12 @@ class handler(BaseHTTPRequestHandler):
                 return responder(self, 200, {
                     "sucesso": True,
                     "dados": salvar_plano_manutencao(body.get("dados", body)),
+                })
+
+            if acao == "concluirLiberacaoManutencao":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": concluir_liberacao_manutencao(body.get("dados", body)),
                 })
 
             return responder(self, 400, {"sucesso": False, "erro": f"Ação POST não reconhecida: {acao}"})
