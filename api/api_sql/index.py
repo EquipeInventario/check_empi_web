@@ -48,8 +48,9 @@ TABLES = {
             "id_perfil_emp",
             "tipo_torre",
             "carga_atual",
+            "ultima_carga_realizada",
         ],
-        "bool_columns": ["adaptada_bobina", "ativo", "possui_gdi"],
+        "bool_columns": ["adaptada_bobina", "possui_gdi"],
         "json_columns": [],
     },
     "usuarios_web_check": {
@@ -174,8 +175,12 @@ TABLES = {
             "anexos",
             "obs_resolucao",
             "id_filial",
+            "criticidade",
+            "prazo_resolucao",
+            "responsavel_manutencao",
+            "bloqueia_operacao",
         ],
-        "bool_columns": ["resolvido"],
+        "bool_columns": ["resolvido", "bloqueia_operacao"],
         "json_columns": ["anexos"],
     },
     "check_empi_anexos": {
@@ -203,58 +208,194 @@ TABLES = {
         "bool_columns": ["migrado_azure"],
         "json_columns": [],
     },
-    "plano_manutencao": {
+    "manutencao_servicos": {
         "schema": "check_maquinas",
-        "table": "plano_manutencao",
+        "table": "manutencao_servicos",
         "pk": "id",
         "columns": [
-            "id", "id_filial", "id_maquina", "codigo_maquina",
-            "tipo_maquina", "semana_referencia", "data_inicio_semana",
-            "data_fim_semana", "status_plano", "observacao_geral",
-            "mecanico_nome", "assinatura_confirmada", "assinatura_em",
-            "criado_por", "criado_em", "atualizado_em",
+            "id",
+            "id_filial",
+            "id_maquina",
+            "codigo_maquina",
+            "id_pendencia",
+            "id_check",
+            "tipo_servico",
+            "data_servico",
+            "horimetro_servico",
+            "descricao_servico",
+            "condicoes_seguranca",
+            "responsavel_execucao",
+            "responsavel_liberacao",
+            "resultado_liberacao",
+            "observacao_liberacao",
+            "tempo_parada_minutos",
+            "status_servico",
+            "checklist_liberacao_json",
+            "plano_acao_json",
+            "criado_por",
+            "criado_em",
+            "atualizado_em",
         ],
-        "bool_columns": ["assinatura_confirmada"],
+        "bool_columns": [],
+        "json_columns": ["checklist_liberacao_json", "plano_acao_json"],
+    },
+    "manutencao_pecas": {
+        "schema": "check_maquinas",
+        "table": "manutencao_pecas",
+        "pk": "id",
+        "columns": [
+            "id",
+            "codigo_peca",
+            "descricao",
+            "categoria",
+            "unidade",
+            "fornecedor",
+            "observacao",
+            "ativo",
+            "criado_em",
+            "atualizado_em",
+        ],
+        "bool_columns": ["ativo"],
         "json_columns": [],
     },
-    "plano_manutencao_itens": {
+    "manutencao_maquina_pecas": {
         "schema": "check_maquinas",
-        "table": "plano_manutencao_itens",
+        "table": "manutencao_maquina_pecas",
         "pk": "id",
         "columns": [
-            "id", "id_plano", "categoria", "item_chave", "item",
-            "tipo_aplicacao", "status_item", "observacao",
-            "acao_necessaria", "prazo_acao", "responsavel_acao",
-            "concluido", "ordem", "atualizado_em",
-        ],
-        "bool_columns": ["concluido"],
-        "json_columns": [],
-    },
-    "plano_manutencao_servicos": {
-        "schema": "check_maquinas",
-        "table": "plano_manutencao_servicos",
-        "pk": "id",
-        "columns": [
-            "id", "id_plano", "data_servico", "tipo_servico",
-            "descricao_servico", "pecas_trocadas", "materiais_utilizados",
-            "condicoes_seguranca", "responsavel", "horimetro",
-            "tempo_parada_minutos", "observacao", "criado_em",
+            "id",
+            "id_maquina",
+            "codigo_maquina",
+            "id_peca",
+            "quantidade",
+            "vida_util_horas",
+            "vida_util_dias",
+            "data_ultima_troca",
+            "horimetro_ultima_troca",
+            "proxima_troca_horimetro",
+            "proxima_troca_data",
+            "alerta_antecedencia_horas",
+            "alerta_antecedencia_dias",
+            "status",
+            "observacao",
+            "criado_em",
+            "atualizado_em",
         ],
         "bool_columns": [],
         "json_columns": [],
     },
-    "plano_manutencao_liberacao": {
+    "manutencao_trocas_pecas": {
         "schema": "check_maquinas",
-        "table": "plano_manutencao_liberacao",
+        "table": "manutencao_trocas_pecas",
         "pk": "id",
         "columns": [
-            "id", "id_plano", "id_check", "id_pendencia", "codigo_maquina",
-            "checklist_json", "resultado_liberacao", "observacao_final",
-            "liberado_por", "data_liberacao", "assinatura_nome",
-            "assinatura_usuario", "criado_em", "atualizado_em",
+            "id",
+            "id_maquina_peca",
+            "id_servico",
+            "codigo_maquina",
+            "id_peca",
+            "data_troca",
+            "horimetro_troca",
+            "quantidade",
+            "responsavel",
+            "observacao",
+            "criado_em",
         ],
         "bool_columns": [],
-        "json_columns": ["checklist_json"],
+        "json_columns": [],
+    },
+    "nr12_apreciacoes": {
+        "schema": "check_maquinas",
+        "table": "nr12_apreciacoes",
+        "pk": "id",
+        "columns": [
+            "id",
+            "id_filial",
+            "id_maquina",
+            "codigo_maquina",
+            "data_apreciacao",
+            "responsavel_tecnico",
+            "empresa_responsavel",
+            "numero_art",
+            "data_art",
+            "status",
+            "observacao",
+            "criado_por",
+            "criado_em",
+            "atualizado_em",
+        ],
+        "bool_columns": [],
+        "json_columns": [],
+    },
+    "nr12_acoes": {
+        "schema": "check_maquinas",
+        "table": "nr12_acoes",
+        "pk": "id",
+        "columns": [
+            "id",
+            "id_apreciacao",
+            "id_maquina",
+            "codigo_maquina",
+            "risco_identificado",
+            "adequacao_necessaria",
+            "prioridade",
+            "prazo",
+            "responsavel",
+            "status",
+            "data_conclusao",
+            "bloqueia_operacao",
+            "observacao",
+            "criado_em",
+            "atualizado_em",
+        ],
+        "bool_columns": ["bloqueia_operacao"],
+        "json_columns": [],
+    },
+    "manutencao_procedimentos_emergencia": {
+        "schema": "check_maquinas",
+        "table": "manutencao_procedimentos_emergencia",
+        "pk": "id",
+        "columns": [
+            "id",
+            "id_filial",
+            "cenario",
+            "tipo_maquina",
+            "descricao_risco",
+            "procedimento",
+            "quem_acionar",
+            "isolamento_area",
+            "equipamentos_necessarios",
+            "responsavel_revisao",
+            "data_revisao",
+            "status",
+            "observacao",
+            "criado_em",
+            "atualizado_em",
+        ],
+        "bool_columns": [],
+        "json_columns": [],
+    },
+    "manutencao_anexos": {
+        "schema": "check_maquinas",
+        "table": "manutencao_anexos",
+        "pk": "id",
+        "columns": [
+            "id",
+            "origem_tabela",
+            "origem_id",
+            "tipo_anexo",
+            "nome_arquivo",
+            "caminho_arquivo",
+            "url_publica",
+            "storage_origem",
+            "container_azure",
+            "blob_azure",
+            "url_azure",
+            "criado_por",
+            "criado_em",
+        ],
+        "bool_columns": [],
+        "json_columns": [],
     },
 }
 
@@ -578,7 +719,19 @@ def inserir(nome_tabela, dados, conn=None):
     if nome_tabela == "check_empi":
         dados.setdefault("data_abertura", agora_mysql())
         dados.setdefault("criado_em", agora_mysql())
-    elif nome_tabela in ["check_empi_pendencias", "check_empi_anexos", "usuarios_web_check"]:
+    elif nome_tabela in [
+        "check_empi_pendencias",
+        "check_empi_anexos",
+        "usuarios_web_check",
+        "manutencao_servicos",
+        "manutencao_pecas",
+        "manutencao_maquina_pecas",
+        "manutencao_trocas_pecas",
+        "nr12_apreciacoes",
+        "nr12_acoes",
+        "manutencao_procedimentos_emergencia",
+        "manutencao_anexos",
+    ]:
         dados.setdefault("criado_em", agora_mysql())
 
     dados_filtrados = filtrar_dados(nome_tabela, dados)
@@ -906,7 +1059,7 @@ def liberar_maquina(codigo_maquina, id_filial=""):
     filtros = {"codigo": codigo_maquina}
     if possui_filial(id_filial):
         filtros["id_filial"] = id_filial
-    return atualizar("maquinas", {"ativo": True}, filtros)
+    return atualizar("maquinas", {"ativo": "Liberado"}, filtros)
 
 
 def atualizar_controle_preventiva_maquina(
@@ -971,7 +1124,7 @@ def finalizar_turno(id_check, codigo_maquina, id_filial, horimetro_final):
             atualizar(
                 "maquinas",
                 {
-                    "ativo": not possui_pendencia,
+                    "ativo": "Manutenção" if possui_pendencia else "Liberado",
                     "horimetro_atual": horimetro_final,
                     "ultimo_reg_horimetro": agora,
                 },
@@ -1015,7 +1168,7 @@ def salvar_check(dados_check):
                 atualizar(
                     "maquinas",
                     {
-                        "ativo": False,
+                        "ativo": "Em uso",
                         "horimetro_atual": horimetro,
                         "ultimo_reg_horimetro": agora,
                     },
@@ -1078,7 +1231,7 @@ def salvar_check_com_pendencias(dados_check, pendencias=None):
                 atualizar(
                     "maquinas",
                     {
-                        "ativo": False,
+                        "ativo": "Em uso",
                         "horimetro_atual": horimetro,
                         "ultimo_reg_horimetro": agora,
                     },
@@ -1101,188 +1254,611 @@ def atualizar_pendencia_anexos(id_pendencia, anexos):
     return atualizar("check_empi_pendencias", {"anexos": anexos}, {"id": id_pendencia})
 
 
-def buscar_planos_manutencao(id_filial="", codigo_maquina=""):
+
+
+def _valor_texto(valor):
+    return str(valor or "").strip()
+
+
+def _valor_data(valor):
+    if valor in [None, ""]:
+        return None
+    if isinstance(valor, datetime):
+        return valor
+    if isinstance(valor, date):
+        return datetime(valor.year, valor.month, valor.day)
+    texto = str(valor).strip().replace("Z", "")
+    try:
+        return datetime.fromisoformat(texto)
+    except Exception:
+        pass
+    for formato in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y"]:
+        try:
+            return datetime.strptime(texto, formato)
+        except Exception:
+            continue
+    return None
+
+
+def _somar_dias(valor_data, dias):
+    data_base = _valor_data(valor_data)
+    try:
+        dias_int = int(dias)
+    except Exception:
+        dias_int = 0
+    if not data_base or dias_int <= 0:
+        return None
+    from datetime import timedelta
+    return (data_base + timedelta(days=dias_int)).date().isoformat()
+
+
+def _normalizar_status_fechado(status):
+    texto = _valor_texto(status).upper().replace("_", " ")
+    return texto in [
+        "RESOLVIDA",
+        "RESOLVIDO",
+        "SOLUCIONADA",
+        "SOLUCIONADO",
+        "FINALIZADA",
+        "FINALIZADO",
+        "FECHADA",
+        "FECHADO",
+        "CONCLUIDA",
+        "CONCLUÍDA",
+        "CONCLUIDO",
+        "CONCLUÍDO",
+        "CANCELADA",
+        "CANCELADO",
+    ]
+
+
+def buscar_servicos_manutencao(
+    id_filial="",
+    codigo_maquina="",
+    id_pendencia="",
+    id_check="",
+    tipo_servico="",
+    status_servico="",
+    limit=500,
+):
     filtros = {}
     if possui_filial(id_filial):
         filtros["id_filial"] = id_filial
-    if str(codigo_maquina or "").strip():
-        filtros["codigo_maquina"] = str(codigo_maquina).strip()
+    if _valor_texto(codigo_maquina):
+        filtros["codigo_maquina"] = _valor_texto(codigo_maquina)
+    if _valor_texto(id_pendencia):
+        filtros["id_pendencia"] = id_pendencia
+    if _valor_texto(id_check):
+        filtros["id_check"] = id_check
+    if _valor_texto(tipo_servico):
+        filtros["tipo_servico"] = tipo_servico
+    if _valor_texto(status_servico):
+        filtros["status_servico"] = status_servico
     return selecionar(
-        "plano_manutencao",
+        "manutencao_servicos",
         filtros=filtros,
-        order_by="data_inicio_semana",
+        order_by="data_servico",
         ascending=False,
-        limit=500,
+        limit=limit or 500,
     )
 
 
-def carregar_plano_manutencao(id_plano):
-    if id_plano in [None, ""]:
-        raise ValueError("Informe o ID do plano de manutencao.")
-
-    plano = selecionar_um("plano_manutencao", {"id": id_plano})
-    if not plano:
-        return None
-
-    return {
-        "plano": plano,
-        "itens": selecionar(
-            "plano_manutencao_itens",
-            {"id_plano": id_plano},
-            order_by="ordem",
-            ascending=True,
-            limit=500,
-        ),
-        "servicos": selecionar(
-            "plano_manutencao_servicos",
-            {"id_plano": id_plano},
-            order_by="data_servico",
-            ascending=False,
-            limit=200,
-        ),
-        "liberacao": selecionar_um(
-            "plano_manutencao_liberacao",
-            {"id_plano": id_plano},
-            order_by="id",
-            ascending=False,
-        ),
-    }
-
-
-def salvar_plano_manutencao(payload):
+def salvar_servico_manutencao(payload):
     payload = dict(payload or {})
-    cabecalho = dict(payload.get("plano") or {})
-    itens = list(payload.get("itens") or [])
-    servicos = list(payload.get("servicos") or [])
-    liberacao = payload.get("liberacao")
+    servico = dict(payload.get("servico") or payload.get("dados") or payload)
+    resolver_pend = bool(payload.get("resolverPendencia") or payload.get("resolver_pendencia"))
+    atualizar_preventiva = bool(payload.get("atualizarPreventiva") or payload.get("atualizar_preventiva"))
 
-    campos_obrigatorios = [
-        "id_filial", "codigo_maquina", "semana_referencia",
-        "data_inicio_semana", "data_fim_semana",
-    ]
-    faltando = [c for c in campos_obrigatorios if cabecalho.get(c) in [None, ""]]
-    if faltando:
-        raise ValueError("Campos obrigatorios ausentes no plano: " + ", ".join(faltando))
+    id_servico = servico.pop("id", None)
+    servico.setdefault("status_servico", "FINALIZADO")
+    if not servico.get("data_servico"):
+        servico["data_servico"] = agora_mysql()
+    servico["atualizado_em"] = agora_mysql()
 
-    id_plano = cabecalho.pop("id", None)
-    cabecalho.setdefault("status_plano", "RASCUNHO")
-    cabecalho.setdefault("criado_em", agora_mysql())
-    cabecalho["atualizado_em"] = agora_mysql()
+    if id_servico:
+        atualizar("manutencao_servicos", servico, {"id": id_servico})
+        salvo = selecionar_um("manutencao_servicos", {"id": id_servico})
+    else:
+        salvo = inserir("manutencao_servicos", servico)
+        id_servico = salvo.get("id")
 
-    conn = conectar()
-    try:
-        if not id_plano:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"SELECT `id` FROM {tabela_sql('plano_manutencao')} "
-                    "WHERE `id_filial` = %s AND `codigo_maquina` = %s "
-                    "AND `data_inicio_semana` = %s LIMIT 1",
-                    (
-                        cabecalho.get("id_filial"),
-                        cabecalho.get("codigo_maquina"),
-                        cabecalho.get("data_inicio_semana"),
-                    ),
-                )
-                existente = cur.fetchone()
-            if existente:
-                id_plano = existente["id"]
+    codigo = _valor_texto(salvo.get("codigo_maquina") if salvo else servico.get("codigo_maquina"))
+    id_filial = salvo.get("id_filial") if salvo else servico.get("id_filial")
+    id_pendencia = salvo.get("id_pendencia") if salvo else servico.get("id_pendencia")
+    responsavel = _valor_texto(
+        (salvo or {}).get("responsavel_liberacao")
+        or (salvo or {}).get("responsavel_execucao")
+        or servico.get("responsavel_liberacao")
+        or servico.get("responsavel_execucao")
+    )
+    resultado = _valor_texto((salvo or {}).get("resultado_liberacao") or servico.get("resultado_liberacao")).upper()
 
-        if id_plano:
-            atualizar("plano_manutencao", cabecalho, {"id": id_plano}, conn=conn)
-        else:
-            criado = inserir("plano_manutencao", cabecalho, conn=conn)
-            id_plano = criado.get("id")
+    if resolver_pend and id_pendencia and responsavel:
+        resolver_pendencia(
+            id_pendencia,
+            responsavel,
+            agora_mysql(),
+            (salvo or {}).get("observacao_liberacao") or servico.get("observacao_liberacao"),
+        )
 
-        if not id_plano:
-            raise RuntimeError("Nao foi possivel identificar o plano salvo.")
+    if resultado == "LIBERADO" and codigo:
+        pendencias = buscar_pendencias_da_maquina(codigo, id_filial)
+        abertas = [p for p in pendencias if not p.get("resolvido") and not _normalizar_status_fechado(p.get("status_pendencia"))]
+        if not abertas:
+            liberar_maquina(codigo, id_filial)
 
+    if atualizar_preventiva and codigo:
+        horimetro = (salvo or {}).get("horimetro_servico") or servico.get("horimetro_servico")
+        if horimetro is not None:
+            maquina = buscar_maquina_por_codigo(codigo, id_filial)
+            intervalo = (maquina or {}).get("intervalo_preventiva_horas")
+            try:
+                prox = float(horimetro) + float(intervalo or 0)
+            except Exception:
+                prox = (maquina or {}).get("prox_manutencao_hora")
+            atualizar(
+                "maquinas",
+                {
+                    "horimetro_atual": horimetro,
+                    "ultimo_reg_horimetro": agora_mysql(),
+                    "horimetro_manutencao": horimetro,
+                    "ultima_manutencao": (salvo or {}).get("data_servico") or agora_mysql(),
+                    "prox_manutencao_hora": prox,
+                },
+                {"codigo": codigo, **({"id_filial": id_filial} if possui_filial(id_filial) else {})},
+            )
+
+    return selecionar_um("manutencao_servicos", {"id": id_servico})
+
+
+def buscar_pecas_manutencao(busca="", ativo="", categoria="", limit=1000):
+    sql = "SELECT * FROM `check_maquinas`.`manutencao_pecas` WHERE 1=1"
+    params = []
+
+    if _valor_texto(busca):
+        termo = f"%{_valor_texto(busca)}%"
+        sql += " AND (`codigo_peca` LIKE %s OR `descricao` LIKE %s OR `categoria` LIKE %s OR `fornecedor` LIKE %s)"
+        params.extend([termo, termo, termo, termo])
+
+    if _valor_texto(ativo):
+        texto = _valor_texto(ativo).lower()
+        if texto in ["true", "1", "s", "sim", "ativo"]:
+            sql += " AND `ativo` = 1"
+        elif texto in ["false", "0", "n", "nao", "não", "inativo"]:
+            sql += " AND (`ativo` = 0 OR `ativo` IS NULL)"
+
+    if _valor_texto(categoria):
+        sql += " AND `categoria` = %s"
+        params.append(categoria)
+
+    sql += " ORDER BY `descricao` ASC LIMIT %s"
+    params.append(max(1, min(int(limit or 1000), 2000)))
+
+    with conectar() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                f"DELETE FROM {tabela_sql('plano_manutencao_itens')} WHERE `id_plano` = %s",
-                (id_plano,),
-            )
-            cur.execute(
-                f"DELETE FROM {tabela_sql('plano_manutencao_servicos')} WHERE `id_plano` = %s",
-                (id_plano,),
-            )
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+    return [normalizar_linha_saida("manutencao_pecas", r) for r in rows]
 
-        for ordem, item in enumerate(itens):
-            dados_item = dict(item or {})
-            dados_item.pop("id", None)
-            dados_item["id_plano"] = id_plano
-            dados_item.setdefault("ordem", ordem)
-            inserir("plano_manutencao_itens", dados_item, conn=conn)
 
-        for servico in servicos:
-            dados_servico = dict(servico or {})
-            dados_servico.pop("id", None)
-            dados_servico["id_plano"] = id_plano
-            inserir("plano_manutencao_servicos", dados_servico, conn=conn)
+def salvar_peca_manutencao(payload):
+    dados = dict(payload.get("peca") or payload.get("dados") or payload or {})
+    id_peca = dados.pop("id", None)
+    dados.setdefault("ativo", True)
+    dados["atualizado_em"] = agora_mysql()
+    if id_peca:
+        atualizar("manutencao_pecas", dados, {"id": id_peca})
+        return selecionar_um("manutencao_pecas", {"id": id_peca})
+    return inserir("manutencao_pecas", dados)
 
-        if liberacao is not None:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"DELETE FROM {tabela_sql('plano_manutencao_liberacao')} WHERE `id_plano` = %s",
-                    (id_plano,),
-                )
-            dados_liberacao = dict(liberacao or {})
-            dados_liberacao.pop("id", None)
-            dados_liberacao["id_plano"] = id_plano
-            inserir("plano_manutencao_liberacao", dados_liberacao, conn=conn)
 
-        conn.commit()
+def _linha_peca_maquina_com_status(linha, horimetro_atual=None):
+    saida = serializar(linha or {})
+    status_calculado = _valor_texto(saida.get("status") or "EM_DIA")
+    alertas = []
+
+    try:
+        atual = float(horimetro_atual) if horimetro_atual not in [None, ""] else None
+        prox_h = float(saida.get("proxima_troca_horimetro")) if saida.get("proxima_troca_horimetro") not in [None, ""] else None
+        antecedencia_h = int(saida.get("alerta_antecedencia_horas") or 0)
+        if atual is not None and prox_h is not None:
+            restante = prox_h - atual
+            saida["horas_restantes_troca"] = restante
+            if restante <= 0:
+                status_calculado = "VENCIDA_HORIMETRO"
+                alertas.append("Troca vencida por horímetro")
+            elif restante <= antecedencia_h:
+                status_calculado = "PROXIMA_TROCA"
+                alertas.append("Troca próxima por horímetro")
     except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+        pass
 
-    return carregar_plano_manutencao(id_plano)
+    prox_data = _valor_data(saida.get("proxima_troca_data"))
+    if prox_data:
+        hoje = datetime.now()
+        dias_restantes = (prox_data.date() - hoje.date()).days
+        saida["dias_restantes_troca"] = dias_restantes
+        try:
+            antecedencia_d = int(saida.get("alerta_antecedencia_dias") or 0)
+        except Exception:
+            antecedencia_d = 0
+        if dias_restantes <= 0:
+            status_calculado = "VENCIDA_DATA"
+            alertas.append("Troca vencida por data")
+        elif dias_restantes <= antecedencia_d and status_calculado == _valor_texto(saida.get("status") or "EM_DIA"):
+            status_calculado = "PROXIMA_TROCA"
+            alertas.append("Troca próxima por data")
+
+    saida["status_calculado"] = status_calculado
+    saida["alertas"] = alertas
+    return saida
 
 
-def concluir_liberacao_manutencao(payload):
-    payload = dict(payload or {})
-    liberacao = dict(payload.get("liberacao") or {})
-    resultado = str(liberacao.get("resultado_liberacao") or "").strip().upper()
-    id_pendencia = liberacao.get("id_pendencia")
-    codigo_maquina = str(liberacao.get("codigo_maquina") or "").strip()
-    responsavel = str(liberacao.get("liberado_por") or "").strip()
-    observacao = liberacao.get("observacao_final")
+def buscar_pecas_da_maquina(codigo_maquina="", id_maquina="", id_peca="", somente_alertas=False):
+    sql = """
+        SELECT
+            mp.*,
+            p.codigo_peca,
+            p.descricao AS peca_descricao,
+            p.categoria AS peca_categoria,
+            p.unidade AS peca_unidade,
+            p.fornecedor AS peca_fornecedor,
+            m.horimetro_atual AS maquina_horimetro_atual,
+            m.descricao AS maquina_descricao,
+            m.tipo_maquina AS maquina_tipo
+        FROM `check_maquinas`.`manutencao_maquina_pecas` mp
+        LEFT JOIN `check_maquinas`.`manutencao_pecas` p ON p.id = mp.id_peca
+        LEFT JOIN `check_maquinas`.`maquinas` m ON m.codigo = mp.codigo_maquina
+        WHERE 1=1
+    """
+    params = []
+    if _valor_texto(codigo_maquina):
+        sql += " AND mp.codigo_maquina = %s"
+        params.append(_valor_texto(codigo_maquina))
+    if _valor_texto(id_maquina):
+        sql += " AND mp.id_maquina = %s"
+        params.append(id_maquina)
+    if _valor_texto(id_peca):
+        sql += " AND mp.id_peca = %s"
+        params.append(id_peca)
+    sql += " ORDER BY p.descricao ASC, mp.id ASC"
 
-    if resultado != "LIBERADO":
-        raise ValueError("A conclusao exige resultado LIBERADO.")
-    if not id_pendencia:
-        raise ValueError("A liberacao precisa estar vinculada a uma pendencia.")
-    if not codigo_maquina:
-        raise ValueError("A liberacao precisa identificar o equipamento.")
-    if not responsavel:
-        raise ValueError("Informe o mecanico responsavel pela liberacao.")
+    with conectar() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
 
-    detalhe = salvar_plano_manutencao(payload)
-    resolver_pendencia(id_pendencia, responsavel, agora_mysql(), observacao)
+    saida = [_linha_peca_maquina_com_status(r, r.get("maquina_horimetro_atual")) for r in rows]
+    if somente_alertas:
+        saida = [r for r in saida if r.get("alertas")]
+    return saida
 
-    id_filial = (payload.get("plano") or {}).get("id_filial", "")
-    pendencias = buscar_pendencias_da_maquina(codigo_maquina, id_filial)
-    pendencias_abertas = []
-    for pendencia in pendencias:
-        status = str(pendencia.get("status_pendencia") or "").strip().upper()
-        resolvido = pendencia.get("resolvido") is True
-        if not resolvido and status not in [
-            "RESOLVIDA", "SOLUCIONADA", "FINALIZADA", "FECHADA", "CANCELADA"
-        ]:
-            pendencias_abertas.append(pendencia)
 
-    maquina_liberada = len(pendencias_abertas) == 0
-    if maquina_liberada:
-        liberar_maquina(codigo_maquina, id_filial)
+def salvar_peca_da_maquina(payload):
+    dados = dict(payload.get("maquinaPeca") or payload.get("maquina_peca") or payload.get("dados") or payload or {})
+    id_registro = dados.pop("id", None)
 
-    return {
-        **(detalhe or {}),
-        "pendencia_resolvida": True,
-        "maquina_liberada": maquina_liberada,
-        "pendencias_abertas_restantes": len(pendencias_abertas),
+    if not dados.get("proxima_troca_horimetro") and dados.get("horimetro_ultima_troca") not in [None, ""] and dados.get("vida_util_horas") not in [None, ""]:
+        try:
+            dados["proxima_troca_horimetro"] = float(dados["horimetro_ultima_troca"]) + int(dados["vida_util_horas"])
+        except Exception:
+            pass
+
+    if not dados.get("proxima_troca_data") and dados.get("data_ultima_troca") and dados.get("vida_util_dias"):
+        dados["proxima_troca_data"] = _somar_dias(dados.get("data_ultima_troca"), dados.get("vida_util_dias"))
+
+    dados["atualizado_em"] = agora_mysql()
+    if id_registro:
+        atualizar("manutencao_maquina_pecas", dados, {"id": id_registro})
+        return buscar_pecas_da_maquina(id_peca=dados.get("id_peca", "")) if not dados.get("codigo_maquina") else selecionar_um("manutencao_maquina_pecas", {"id": id_registro})
+    return inserir("manutencao_maquina_pecas", dados)
+
+
+def buscar_trocas_pecas(codigo_maquina="", id_maquina_peca="", id_peca="", id_servico="", limit=500):
+    sql = """
+        SELECT
+            t.*,
+            p.codigo_peca,
+            p.descricao AS peca_descricao,
+            p.categoria AS peca_categoria,
+            s.tipo_servico,
+            s.data_servico,
+            s.descricao_servico
+        FROM `check_maquinas`.`manutencao_trocas_pecas` t
+        LEFT JOIN `check_maquinas`.`manutencao_pecas` p ON p.id = t.id_peca
+        LEFT JOIN `check_maquinas`.`manutencao_servicos` s ON s.id = t.id_servico
+        WHERE 1=1
+    """
+    params = []
+    if _valor_texto(codigo_maquina):
+        sql += " AND t.codigo_maquina = %s"
+        params.append(codigo_maquina)
+    if _valor_texto(id_maquina_peca):
+        sql += " AND t.id_maquina_peca = %s"
+        params.append(id_maquina_peca)
+    if _valor_texto(id_peca):
+        sql += " AND t.id_peca = %s"
+        params.append(id_peca)
+    if _valor_texto(id_servico):
+        sql += " AND t.id_servico = %s"
+        params.append(id_servico)
+    sql += " ORDER BY t.data_troca DESC LIMIT %s"
+    params.append(max(1, min(int(limit or 500), 2000)))
+
+    with conectar() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.fetchall()
+
+
+def registrar_troca_peca(payload):
+    dados = dict(payload.get("troca") or payload.get("dados") or payload or {})
+    dados.setdefault("data_troca", agora_mysql())
+
+    id_maquina_peca = dados.get("id_maquina_peca")
+    if not id_maquina_peca:
+        raise ValueError("Informe id_maquina_peca para registrar a troca.")
+
+    maquina_peca = selecionar_um("manutencao_maquina_pecas", {"id": id_maquina_peca})
+    if not maquina_peca:
+        raise ValueError("Peça vinculada à máquina não encontrada.")
+
+    dados.setdefault("codigo_maquina", maquina_peca.get("codigo_maquina"))
+    dados.setdefault("id_peca", maquina_peca.get("id_peca"))
+    troca = inserir("manutencao_trocas_pecas", dados)
+
+    atualizacao = {
+        "data_ultima_troca": dados.get("data_troca"),
+        "horimetro_ultima_troca": dados.get("horimetro_troca"),
+        "status": "EM_DIA",
+        "atualizado_em": agora_mysql(),
     }
 
+    if dados.get("horimetro_troca") not in [None, ""] and maquina_peca.get("vida_util_horas") not in [None, ""]:
+        try:
+            atualizacao["proxima_troca_horimetro"] = float(dados.get("horimetro_troca")) + int(maquina_peca.get("vida_util_horas"))
+        except Exception:
+            pass
+
+    if maquina_peca.get("vida_util_dias") not in [None, ""]:
+        proxima_data = _somar_dias(dados.get("data_troca"), maquina_peca.get("vida_util_dias"))
+        if proxima_data:
+            atualizacao["proxima_troca_data"] = proxima_data
+
+    atualizar("manutencao_maquina_pecas", atualizacao, {"id": id_maquina_peca})
+
+    return {
+        "troca": troca,
+        "maquinaPeca": selecionar_um("manutencao_maquina_pecas", {"id": id_maquina_peca}),
+    }
+
+
+def buscar_apreciacoes_nr12(id_filial="", codigo_maquina="", status="", limit=500):
+    filtros = {}
+    if possui_filial(id_filial):
+        filtros["id_filial"] = id_filial
+    if _valor_texto(codigo_maquina):
+        filtros["codigo_maquina"] = codigo_maquina
+    if _valor_texto(status):
+        filtros["status"] = status
+    return selecionar("nr12_apreciacoes", filtros=filtros, order_by="criado_em", ascending=False, limit=limit or 500)
+
+
+def buscar_acoes_nr12(id_apreciacao="", id_filial="", codigo_maquina="", status="", somente_atrasadas=False, limit=1000):
+    sql = """
+        SELECT a.*
+        FROM `check_maquinas`.`nr12_acoes` a
+        LEFT JOIN `check_maquinas`.`nr12_apreciacoes` ap ON ap.id = a.id_apreciacao
+        WHERE 1=1
+    """
+    params = []
+    if _valor_texto(id_apreciacao):
+        sql += " AND a.id_apreciacao = %s"
+        params.append(id_apreciacao)
+    if possui_filial(id_filial):
+        sql += " AND ap.id_filial = %s"
+        params.append(id_filial)
+    if _valor_texto(codigo_maquina):
+        sql += " AND a.codigo_maquina = %s"
+        params.append(codigo_maquina)
+    if _valor_texto(status):
+        sql += " AND a.status = %s"
+        params.append(status)
+    if somente_atrasadas:
+        sql += " AND a.prazo < CURDATE() AND a.status NOT IN ('CONCLUIDO', 'CONCLUÍDO', 'CONCLUIDA', 'CONCLUÍDA', 'CANCELADO', 'CANCELADA')"
+    sql += " ORDER BY a.prazo ASC, a.id DESC LIMIT %s"
+    params.append(max(1, min(int(limit or 1000), 2000)))
+
+    with conectar() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+    return [normalizar_linha_saida("nr12_acoes", r) for r in rows]
+
+
+def carregar_apreciacao_nr12(id_apreciacao):
+    if id_apreciacao in [None, ""]:
+        raise ValueError("Informe o ID da apreciação NR-12.")
+    apreciacao = selecionar_um("nr12_apreciacoes", {"id": id_apreciacao})
+    if not apreciacao:
+        return None
+    return {
+        "apreciacao": apreciacao,
+        "acoes": buscar_acoes_nr12(id_apreciacao=id_apreciacao),
+        "anexos": buscar_anexos_manutencao("nr12_apreciacoes", id_apreciacao),
+    }
+
+
+def salvar_apreciacao_nr12(payload):
+    payload = dict(payload or {})
+    dados = dict(payload.get("apreciacao") or payload.get("dados") or payload or {})
+    acoes = payload.get("acoes")
+    id_apreciacao = dados.pop("id", None)
+
+    tem_art = _valor_texto(dados.get("numero_art")) and _valor_texto(dados.get("data_art"))
+    if _valor_texto(dados.get("status")).upper() in ["CONCLUIDA", "CONCLUÍDA", "ATENDIDA", "CONCLUIDA_COM_ART"]:
+        dados["status"] = "CONCLUIDA_COM_ART" if tem_art else "CONCLUIDA_SEM_ART"
+    dados["atualizado_em"] = agora_mysql()
+
+    if id_apreciacao:
+        atualizar("nr12_apreciacoes", dados, {"id": id_apreciacao})
+    else:
+        criada = inserir("nr12_apreciacoes", dados)
+        id_apreciacao = criada.get("id")
+
+    if isinstance(acoes, list):
+        for acao in acoes:
+            salvar_acao_nr12({**dict(acao or {}), "id_apreciacao": id_apreciacao})
+
+    return carregar_apreciacao_nr12(id_apreciacao)
+
+
+def salvar_acao_nr12(payload):
+    dados = dict(payload.get("acaoNr12") or payload.get("acao") or payload.get("dados") or payload or {})
+    id_acao = dados.pop("id", None)
+    dados["atualizado_em"] = agora_mysql()
+    if id_acao:
+        atualizar("nr12_acoes", dados, {"id": id_acao})
+        return selecionar_um("nr12_acoes", {"id": id_acao})
+    return inserir("nr12_acoes", dados)
+
+
+def buscar_procedimentos_emergencia(id_filial="", tipo_maquina="", status="ATIVO", limit=1000):
+    filtros = {}
+    if possui_filial(id_filial):
+        filtros["id_filial"] = id_filial
+    if _valor_texto(tipo_maquina):
+        filtros["tipo_maquina"] = tipo_maquina
+    if _valor_texto(status):
+        filtros["status"] = status
+    return selecionar("manutencao_procedimentos_emergencia", filtros=filtros, order_by="cenario", ascending=True, limit=limit or 1000)
+
+
+def salvar_procedimento_emergencia(payload):
+    dados = dict(payload.get("procedimento") or payload.get("dados") or payload or {})
+    id_registro = dados.pop("id", None)
+    dados["atualizado_em"] = agora_mysql()
+    if id_registro:
+        atualizar("manutencao_procedimentos_emergencia", dados, {"id": id_registro})
+        return selecionar_um("manutencao_procedimentos_emergencia", {"id": id_registro})
+    return inserir("manutencao_procedimentos_emergencia", dados)
+
+
+def buscar_anexos_manutencao(origem_tabela="", origem_id="", tipo_anexo="", limit=500):
+    filtros = {}
+    if _valor_texto(origem_tabela):
+        filtros["origem_tabela"] = origem_tabela
+    if _valor_texto(origem_id):
+        filtros["origem_id"] = origem_id
+    if _valor_texto(tipo_anexo):
+        filtros["tipo_anexo"] = tipo_anexo
+    return selecionar("manutencao_anexos", filtros=filtros, order_by="criado_em", ascending=False, limit=limit or 500)
+
+
+def salvar_anexo_manutencao(payload):
+    dados = dict(payload.get("anexo") or payload.get("dados") or payload or {})
+    id_anexo = dados.pop("id", None)
+    if id_anexo:
+        atualizar("manutencao_anexos", dados, {"id": id_anexo})
+        return selecionar_um("manutencao_anexos", {"id": id_anexo})
+    return inserir("manutencao_anexos", dados)
+
+
+def carregar_plano_manutencao_maquina(codigo_maquina, id_filial=""):
+    codigo = _valor_texto(codigo_maquina)
+    if not codigo:
+        raise ValueError("Informe o código da máquina/equipamento.")
+
+    maquina = buscar_maquina_por_codigo(codigo, id_filial=id_filial)
+    checks = []
+    if codigo:
+        sql_checks = """
+            SELECT *
+            FROM `check_maquinas`.`check_empi`
+            WHERE `empilhadeira` = %s
+        """
+        params = [codigo]
+        if possui_filial(id_filial):
+            sql_checks += " AND `id_filial` = %s"
+            params.append(id_filial)
+        sql_checks += " ORDER BY `data_abertura` DESC LIMIT 100"
+        with conectar() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql_checks, params)
+                checks = [normalizar_linha_saida("check_empi", r) for r in cur.fetchall()]
+
+    apreciacoes = buscar_apreciacoes_nr12(id_filial=id_filial, codigo_maquina=codigo, limit=50)
+    ids_apreciacoes = [a.get("id") for a in apreciacoes if a.get("id")]
+    acoes = []
+    for id_ap in ids_apreciacoes:
+        acoes.extend(buscar_acoes_nr12(id_apreciacao=id_ap, limit=500))
+
+    pecas = buscar_pecas_da_maquina(codigo_maquina=codigo)
+    servicos = buscar_servicos_manutencao(
+        id_filial=id_filial,
+        codigo_maquina=codigo,
+        limit=200,
+    )
+    anexos_manutencao = []
+    if maquina:
+        anexos_manutencao.extend(
+            buscar_anexos_manutencao("maquinas", maquina.get("id", ""))
+        )
+    for servico in servicos:
+        if servico.get("id"):
+            anexos_manutencao.extend(
+                buscar_anexos_manutencao("manutencao_servicos", servico.get("id"))
+            )
+    for apreciacao in apreciacoes:
+        if apreciacao.get("id"):
+            anexos_manutencao.extend(
+                buscar_anexos_manutencao("nr12_apreciacoes", apreciacao.get("id"))
+            )
+    for acao in acoes:
+        if acao.get("id"):
+            anexos_manutencao.extend(
+                buscar_anexos_manutencao("nr12_acoes", acao.get("id"))
+            )
+
+    return {
+        "maquina": maquina,
+        "checks": checks,
+        "pendencias": buscar_pendencias_da_maquina(codigo, id_filial=id_filial),
+        "servicos": servicos,
+        "pecas": pecas,
+        "trocasPecas": buscar_trocas_pecas(codigo_maquina=codigo, limit=200),
+        "apreciacoesNr12": apreciacoes,
+        "acoesNr12": acoes,
+        "procedimentosEmergencia": buscar_procedimentos_emergencia(
+            id_filial=id_filial,
+            tipo_maquina=(maquina or {}).get("tipo_maquina", ""),
+            status="ATIVO",
+        ),
+        "anexosManutencao": anexos_manutencao,
+    }
+
+
+def buscar_alertas_plano_manutencao(id_filial=""):
+    maquinas = buscar_maquinas(id_filial=id_filial)
+    pecas_alerta = []
+    for maquina in maquinas:
+        codigo = maquina.get("codigo")
+        if not codigo:
+            continue
+        pecas_alerta.extend(buscar_pecas_da_maquina(codigo_maquina=codigo, somente_alertas=True))
+
+    acoes_atrasadas = buscar_acoes_nr12(id_filial=id_filial, somente_atrasadas=True, limit=1000)
+    apreciacoes = buscar_apreciacoes_nr12(id_filial=id_filial, limit=1000)
+    apreciacoes_sem_art = [a for a in apreciacoes if not _valor_texto(a.get("numero_art"))]
+
+    return {
+        "pecasAlerta": pecas_alerta,
+        "acoesNr12Atrasadas": acoes_atrasadas,
+        "apreciacoesSemArt": apreciacoes_sem_art,
+        "totalPecasAlerta": len(pecas_alerta),
+        "totalAcoesNr12Atrasadas": len(acoes_atrasadas),
+        "totalApreciacoesSemArt": len(apreciacoes_sem_art),
+    }
 
 # ============================================================
 # HANDLER VERCEL
@@ -1350,15 +1926,91 @@ class handler(BaseHTTPRequestHandler):
             if acao == "carregarDetalhesManutencao":
                 return responder(self, 200, {"sucesso": True, "dados": carregar_detalhes_manutencao(id_pendencia=query_param(query, "idPendencia", None), id_filial=query_param(query, "idFilial", ""))})
 
-            if acao == "buscarPlanosManutencao":
-                return responder(self, 200, {"sucesso": True, "dados": buscar_planos_manutencao(
+
+            if acao == "carregarPlanoManutencaoMaquina":
+                return responder(self, 200, {"sucesso": True, "dados": carregar_plano_manutencao_maquina(
+                    query_param(query, "codigoMaquina"),
                     query_param(query, "idFilial", ""),
-                    query_param(query, "codigoMaquina", ""),
                 )})
 
-            if acao == "carregarPlanoManutencao":
-                return responder(self, 200, {"sucesso": True, "dados": carregar_plano_manutencao(
-                    query_param(query, "idPlano", None)
+            if acao == "buscarServicosManutencao":
+                return responder(self, 200, {"sucesso": True, "dados": buscar_servicos_manutencao(
+                    id_filial=query_param(query, "idFilial", ""),
+                    codigo_maquina=query_param(query, "codigoMaquina", ""),
+                    id_pendencia=query_param(query, "idPendencia", ""),
+                    id_check=query_param(query, "idCheck", ""),
+                    tipo_servico=query_param(query, "tipoServico", ""),
+                    status_servico=query_param(query, "statusServico", ""),
+                    limit=query_param(query, "limit", "500"),
+                )})
+
+            if acao == "buscarPecasManutencao":
+                return responder(self, 200, {"sucesso": True, "dados": buscar_pecas_manutencao(
+                    busca=query_param(query, "busca", ""),
+                    ativo=query_param(query, "ativo", ""),
+                    categoria=query_param(query, "categoria", ""),
+                    limit=query_param(query, "limit", "1000"),
+                )})
+
+            if acao == "buscarPecasDaMaquina":
+                return responder(self, 200, {"sucesso": True, "dados": buscar_pecas_da_maquina(
+                    codigo_maquina=query_param(query, "codigoMaquina", ""),
+                    id_maquina=query_param(query, "idMaquina", ""),
+                    id_peca=query_param(query, "idPeca", ""),
+                    somente_alertas=query_param(query, "somenteAlertas", "false").lower() in ["1", "true", "sim"],
+                )})
+
+            if acao == "buscarTrocasPecas":
+                return responder(self, 200, {"sucesso": True, "dados": buscar_trocas_pecas(
+                    codigo_maquina=query_param(query, "codigoMaquina", ""),
+                    id_maquina_peca=query_param(query, "idMaquinaPeca", ""),
+                    id_peca=query_param(query, "idPeca", ""),
+                    id_servico=query_param(query, "idServico", ""),
+                    limit=query_param(query, "limit", "500"),
+                )})
+
+            if acao == "buscarApreciacoesNr12":
+                return responder(self, 200, {"sucesso": True, "dados": buscar_apreciacoes_nr12(
+                    id_filial=query_param(query, "idFilial", ""),
+                    codigo_maquina=query_param(query, "codigoMaquina", ""),
+                    status=query_param(query, "status", ""),
+                    limit=query_param(query, "limit", "500"),
+                )})
+
+            if acao == "carregarApreciacaoNr12":
+                return responder(self, 200, {"sucesso": True, "dados": carregar_apreciacao_nr12(
+                    query_param(query, "idApreciacao", None)
+                )})
+
+            if acao == "buscarAcoesNr12":
+                return responder(self, 200, {"sucesso": True, "dados": buscar_acoes_nr12(
+                    id_apreciacao=query_param(query, "idApreciacao", ""),
+                    id_filial=query_param(query, "idFilial", ""),
+                    codigo_maquina=query_param(query, "codigoMaquina", ""),
+                    status=query_param(query, "status", ""),
+                    somente_atrasadas=query_param(query, "somenteAtrasadas", "false").lower() in ["1", "true", "sim"],
+                    limit=query_param(query, "limit", "1000"),
+                )})
+
+            if acao == "buscarProcedimentosEmergencia":
+                return responder(self, 200, {"sucesso": True, "dados": buscar_procedimentos_emergencia(
+                    id_filial=query_param(query, "idFilial", ""),
+                    tipo_maquina=query_param(query, "tipoMaquina", ""),
+                    status=query_param(query, "status", "ATIVO"),
+                    limit=query_param(query, "limit", "1000"),
+                )})
+
+            if acao == "buscarAnexosManutencao":
+                return responder(self, 200, {"sucesso": True, "dados": buscar_anexos_manutencao(
+                    origem_tabela=query_param(query, "origemTabela", ""),
+                    origem_id=query_param(query, "origemId", ""),
+                    tipo_anexo=query_param(query, "tipoAnexo", ""),
+                    limit=query_param(query, "limit", "500"),
+                )})
+
+            if acao == "buscarAlertasPlanoManutencao":
+                return responder(self, 200, {"sucesso": True, "dados": buscar_alertas_plano_manutencao(
+                    query_param(query, "idFilial", ""),
                 )})
 
             if acao == "select":
@@ -1442,16 +2094,53 @@ class handler(BaseHTTPRequestHandler):
                     ),
                 })
 
-            if acao == "salvarPlanoManutencao":
+
+            if acao == "salvarServicoManutencao":
                 return responder(self, 200, {
                     "sucesso": True,
-                    "dados": salvar_plano_manutencao(body.get("dados", body)),
+                    "dados": salvar_servico_manutencao(body.get("dados", body)),
                 })
 
-            if acao == "concluirLiberacaoManutencao":
+            if acao == "salvarPecaManutencao":
                 return responder(self, 200, {
                     "sucesso": True,
-                    "dados": concluir_liberacao_manutencao(body.get("dados", body)),
+                    "dados": salvar_peca_manutencao(body.get("dados", body)),
+                })
+
+            if acao == "salvarPecaDaMaquina":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": salvar_peca_da_maquina(body.get("dados", body)),
+                })
+
+            if acao == "registrarTrocaPeca":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": registrar_troca_peca(body.get("dados", body)),
+                })
+
+            if acao == "salvarApreciacaoNr12":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": salvar_apreciacao_nr12(body.get("dados", body)),
+                })
+
+            if acao == "salvarAcaoNr12":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": salvar_acao_nr12(body.get("dados", body)),
+                })
+
+            if acao == "salvarProcedimentoEmergencia":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": salvar_procedimento_emergencia(body.get("dados", body)),
+                })
+
+            if acao == "salvarAnexoManutencao":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": salvar_anexo_manutencao(body.get("dados", body)),
                 })
 
             return responder(self, 400, {"sucesso": False, "erro": f"Ação POST não reconhecida: {acao}"})
