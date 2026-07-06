@@ -4,9 +4,11 @@ from datetime import datetime, date
 from decimal import Decimal
 import json
 import os
+import re
 import traceback
 
 import pymysql
+from pymysql.err import OperationalError
 
 
 # ============================================================
@@ -397,6 +399,59 @@ TABLES = {
         "bool_columns": [],
         "json_columns": [],
     },
+    "plano_manutencao": {
+        "schema": "check_maquinas",
+        "table": "plano_manutencao",
+        "pk": "id",
+        "columns": [
+            "id", "id_filial", "id_maquina", "codigo_maquina",
+            "tipo_maquina", "semana_referencia", "data_inicio_semana",
+            "data_fim_semana", "status_plano", "observacao_geral",
+            "mecanico_nome", "assinatura_confirmada", "assinatura_em",
+            "criado_por", "criado_em", "atualizado_em",
+        ],
+        "bool_columns": ["assinatura_confirmada"],
+        "json_columns": [],
+    },
+    "plano_manutencao_itens": {
+        "schema": "check_maquinas",
+        "table": "plano_manutencao_itens",
+        "pk": "id",
+        "columns": [
+            "id", "id_plano", "categoria", "item_chave", "item",
+            "tipo_aplicacao", "status_item", "observacao",
+            "acao_necessaria", "prazo_acao", "responsavel_acao",
+            "concluido", "ordem", "atualizado_em",
+        ],
+        "bool_columns": ["concluido"],
+        "json_columns": [],
+    },
+    "plano_manutencao_servicos": {
+        "schema": "check_maquinas",
+        "table": "plano_manutencao_servicos",
+        "pk": "id",
+        "columns": [
+            "id", "id_plano", "data_servico", "tipo_servico",
+            "descricao_servico", "pecas_trocadas", "materiais_utilizados",
+            "condicoes_seguranca", "responsavel", "horimetro",
+            "tempo_parada_minutos", "observacao", "criado_em",
+        ],
+        "bool_columns": [],
+        "json_columns": [],
+    },
+    "plano_manutencao_liberacao": {
+        "schema": "check_maquinas",
+        "table": "plano_manutencao_liberacao",
+        "pk": "id",
+        "columns": [
+            "id", "id_plano", "id_check", "id_pendencia", "codigo_maquina",
+            "checklist_json", "resultado_liberacao", "observacao_final",
+            "liberado_por", "data_liberacao", "assinatura_nome",
+            "assinatura_usuario", "criado_em", "atualizado_em",
+        ],
+        "bool_columns": [],
+        "json_columns": ["checklist_json"],
+    },
 }
 
 ANEXOS_SELECT = [
@@ -579,6 +634,27 @@ def coluna_sql(nome_tabela, coluna):
     return f"`{coluna}`"
 
 
+def normalizar_data_mysql(valor):
+    if valor in [None, ""]:
+        return valor
+    if isinstance(valor, (datetime, date)):
+        if isinstance(valor, date) and not isinstance(valor, datetime):
+            return valor.strftime("%Y-%m-%d")
+        return valor.strftime("%Y-%m-%d %H:%M:%S")
+    texto = str(valor).strip()
+    if not texto:
+        return texto
+    texto = texto.replace("T", " ")
+    if texto.endswith("Z"):
+        texto = texto[:-1]
+    if "." in texto:
+        texto = texto.split(".", 1)[0]
+    # YYYY-MM-DD HH:MM -> YYYY-MM-DD HH:MM:SS
+    if re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$", texto):
+        return texto + ":00"
+    return texto
+
+
 def normalizar_valor_para_banco(nome_tabela, coluna, valor):
     cfg = cfg_tabela(nome_tabela)
 
@@ -600,6 +676,12 @@ def normalizar_valor_para_banco(nome_tabela, coluna, valor):
         if isinstance(valor, str):
             return valor
         return json.dumps(valor, ensure_ascii=False)
+
+    if coluna.startswith("data_") or coluna.endswith("_em") or coluna in [
+        "ultima_manutencao",
+        "ultimo_reg_horimetro",
+    ]:
+        return normalizar_data_mysql(valor)
 
     return valor
 
@@ -1353,14 +1435,40 @@ def salvar_servico_manutencao(payload):
     servico.setdefault("status_servico", "FINALIZADO")
     if not servico.get("data_servico"):
         servico["data_servico"] = agora_mysql()
+    else:
+        servico["data_servico"] = normalizar_data_mysql(servico.get("data_servico"))
     servico["atualizado_em"] = agora_mysql()
 
-    if id_servico:
-        atualizar("manutencao_servicos", servico, {"id": id_servico})
-        salvo = selecionar_um("manutencao_servicos", {"id": id_servico})
-    else:
-        salvo = inserir("manutencao_servicos", servico)
-        id_servico = salvo.get("id")
+    if not _valor_texto(servico.get("codigo_maquina")):
+        raise ValueError("Informe codigo_maquina para salvar o serviço de manutenção.")
+    if not _valor_texto(servico.get("tipo_servico")):
+        raise ValueError("Informe tipo_servico para salvar o serviço de manutenção.")
+    if not _valor_texto(servico.get("descricao_servico")):
+        raise ValueError("Informe descricao_servico para salvar o serviço de manutenção.")
+    if not _valor_texto(servico.get("responsavel_execucao")):
+        raise ValueError("Informe responsavel_execucao para salvar o serviço de manutenção.")
+
+    def _salvar_com_retry(dados):
+        try:
+            if id_servico:
+                atualizar("manutencao_servicos", dados, {"id": id_servico})
+                return selecionar_um("manutencao_servicos", {"id": id_servico})
+            return inserir("manutencao_servicos", dados)
+        except OperationalError as exc:
+            mensagem = str(exc)
+            # Mantém o sistema funcionando mesmo se o banco ainda não recebeu as colunas JSON.
+            if "checklist_liberacao_json" in mensagem or "plano_acao_json" in mensagem:
+                dados_sem_json = dict(dados)
+                dados_sem_json.pop("checklist_liberacao_json", None)
+                dados_sem_json.pop("plano_acao_json", None)
+                if id_servico:
+                    atualizar("manutencao_servicos", dados_sem_json, {"id": id_servico})
+                    return selecionar_um("manutencao_servicos", {"id": id_servico})
+                return inserir("manutencao_servicos", dados_sem_json)
+            raise
+
+    salvo = _salvar_com_retry(servico)
+    id_servico = salvo.get("id") if salvo else id_servico
 
     codigo = _valor_texto(salvo.get("codigo_maquina") if salvo else servico.get("codigo_maquina"))
     id_filial = salvo.get("id_filial") if salvo else servico.get("id_filial")
@@ -1794,37 +1902,12 @@ def carregar_plano_manutencao_maquina(codigo_maquina, id_filial=""):
         acoes.extend(buscar_acoes_nr12(id_apreciacao=id_ap, limit=500))
 
     pecas = buscar_pecas_da_maquina(codigo_maquina=codigo)
-    servicos = buscar_servicos_manutencao(
-        id_filial=id_filial,
-        codigo_maquina=codigo,
-        limit=200,
-    )
-    anexos_manutencao = []
-    if maquina:
-        anexos_manutencao.extend(
-            buscar_anexos_manutencao("maquinas", maquina.get("id", ""))
-        )
-    for servico in servicos:
-        if servico.get("id"):
-            anexos_manutencao.extend(
-                buscar_anexos_manutencao("manutencao_servicos", servico.get("id"))
-            )
-    for apreciacao in apreciacoes:
-        if apreciacao.get("id"):
-            anexos_manutencao.extend(
-                buscar_anexos_manutencao("nr12_apreciacoes", apreciacao.get("id"))
-            )
-    for acao in acoes:
-        if acao.get("id"):
-            anexos_manutencao.extend(
-                buscar_anexos_manutencao("nr12_acoes", acao.get("id"))
-            )
 
     return {
         "maquina": maquina,
         "checks": checks,
         "pendencias": buscar_pendencias_da_maquina(codigo, id_filial=id_filial),
-        "servicos": servicos,
+        "servicos": buscar_servicos_manutencao(id_filial=id_filial, codigo_maquina=codigo, limit=200),
         "pecas": pecas,
         "trocasPecas": buscar_trocas_pecas(codigo_maquina=codigo, limit=200),
         "apreciacoesNr12": apreciacoes,
@@ -1834,7 +1917,7 @@ def carregar_plano_manutencao_maquina(codigo_maquina, id_filial=""):
             tipo_maquina=(maquina or {}).get("tipo_maquina", ""),
             status="ATIVO",
         ),
-        "anexosManutencao": anexos_manutencao,
+        "anexosManutencao": buscar_anexos_manutencao("maquinas", (maquina or {}).get("id", "")) if maquina else [],
     }
 
 
@@ -1859,6 +1942,189 @@ def buscar_alertas_plano_manutencao(id_filial=""):
         "totalAcoesNr12Atrasadas": len(acoes_atrasadas),
         "totalApreciacoesSemArt": len(apreciacoes_sem_art),
     }
+
+def buscar_planos_manutencao(id_filial="", codigo_maquina=""):
+    filtros = {}
+    if possui_filial(id_filial):
+        filtros["id_filial"] = id_filial
+    if str(codigo_maquina or "").strip():
+        filtros["codigo_maquina"] = str(codigo_maquina).strip()
+    return selecionar(
+        "plano_manutencao",
+        filtros=filtros,
+        order_by="data_inicio_semana",
+        ascending=False,
+        limit=500,
+    )
+
+
+def carregar_plano_manutencao(id_plano):
+    if id_plano in [None, ""]:
+        raise ValueError("Informe o ID do plano de manutencao.")
+
+    plano = selecionar_um("plano_manutencao", {"id": id_plano})
+    if not plano:
+        return None
+
+    return {
+        "plano": plano,
+        "itens": selecionar(
+            "plano_manutencao_itens",
+            {"id_plano": id_plano},
+            order_by="ordem",
+            ascending=True,
+            limit=500,
+        ),
+        "servicos": selecionar(
+            "plano_manutencao_servicos",
+            {"id_plano": id_plano},
+            order_by="data_servico",
+            ascending=False,
+            limit=200,
+        ),
+        "liberacao": selecionar_um(
+            "plano_manutencao_liberacao",
+            {"id_plano": id_plano},
+            order_by="id",
+            ascending=False,
+        ),
+    }
+
+
+def salvar_plano_manutencao(payload):
+    payload = dict(payload or {})
+    cabecalho = dict(payload.get("plano") or {})
+    itens = list(payload.get("itens") or [])
+    servicos = list(payload.get("servicos") or [])
+    liberacao = payload.get("liberacao")
+
+    campos_obrigatorios = [
+        "id_filial", "codigo_maquina", "semana_referencia",
+        "data_inicio_semana", "data_fim_semana",
+    ]
+    faltando = [c for c in campos_obrigatorios if cabecalho.get(c) in [None, ""]]
+    if faltando:
+        raise ValueError("Campos obrigatorios ausentes no plano: " + ", ".join(faltando))
+
+    id_plano = cabecalho.pop("id", None)
+    cabecalho.setdefault("status_plano", "RASCUNHO")
+    cabecalho.setdefault("criado_em", agora_mysql())
+    cabecalho["atualizado_em"] = agora_mysql()
+
+    conn = conectar()
+    try:
+        if not id_plano:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"SELECT `id` FROM {tabela_sql('plano_manutencao')} "
+                    "WHERE `id_filial` = %s AND `codigo_maquina` = %s "
+                    "AND `data_inicio_semana` = %s LIMIT 1",
+                    (
+                        cabecalho.get("id_filial"),
+                        cabecalho.get("codigo_maquina"),
+                        cabecalho.get("data_inicio_semana"),
+                    ),
+                )
+                existente = cur.fetchone()
+            if existente:
+                id_plano = existente["id"]
+
+        if id_plano:
+            atualizar("plano_manutencao", cabecalho, {"id": id_plano}, conn=conn)
+        else:
+            criado = inserir("plano_manutencao", cabecalho, conn=conn)
+            id_plano = criado.get("id")
+
+        if not id_plano:
+            raise RuntimeError("Nao foi possivel identificar o plano salvo.")
+
+        with conn.cursor() as cur:
+            cur.execute(
+                f"DELETE FROM {tabela_sql('plano_manutencao_itens')} WHERE `id_plano` = %s",
+                (id_plano,),
+            )
+            cur.execute(
+                f"DELETE FROM {tabela_sql('plano_manutencao_servicos')} WHERE `id_plano` = %s",
+                (id_plano,),
+            )
+
+        for ordem, item in enumerate(itens):
+            dados_item = dict(item or {})
+            dados_item.pop("id", None)
+            dados_item["id_plano"] = id_plano
+            dados_item.setdefault("ordem", ordem)
+            inserir("plano_manutencao_itens", dados_item, conn=conn)
+
+        for servico in servicos:
+            dados_servico = dict(servico or {})
+            dados_servico.pop("id", None)
+            dados_servico["id_plano"] = id_plano
+            inserir("plano_manutencao_servicos", dados_servico, conn=conn)
+
+        if liberacao is not None:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"DELETE FROM {tabela_sql('plano_manutencao_liberacao')} WHERE `id_plano` = %s",
+                    (id_plano,),
+                )
+            dados_liberacao = dict(liberacao or {})
+            dados_liberacao.pop("id", None)
+            dados_liberacao["id_plano"] = id_plano
+            inserir("plano_manutencao_liberacao", dados_liberacao, conn=conn)
+
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    return carregar_plano_manutencao(id_plano)
+
+
+def concluir_liberacao_manutencao(payload):
+    payload = dict(payload or {})
+    liberacao = dict(payload.get("liberacao") or {})
+    resultado = str(liberacao.get("resultado_liberacao") or "").strip().upper()
+    id_pendencia = liberacao.get("id_pendencia")
+    codigo_maquina = str(liberacao.get("codigo_maquina") or "").strip()
+    responsavel = str(liberacao.get("liberado_por") or "").strip()
+    observacao = liberacao.get("observacao_final")
+
+    if resultado != "LIBERADO":
+        raise ValueError("A conclusao exige resultado LIBERADO.")
+    if not id_pendencia:
+        raise ValueError("A liberacao precisa estar vinculada a uma pendencia.")
+    if not codigo_maquina:
+        raise ValueError("A liberacao precisa identificar o equipamento.")
+    if not responsavel:
+        raise ValueError("Informe o mecanico responsavel pela liberacao.")
+
+    detalhe = salvar_plano_manutencao(payload)
+    resolver_pendencia(id_pendencia, responsavel, agora_mysql(), observacao)
+
+    id_filial = (payload.get("plano") or {}).get("id_filial", "")
+    pendencias = buscar_pendencias_da_maquina(codigo_maquina, id_filial)
+    pendencias_abertas = []
+    for pendencia in pendencias:
+        status = str(pendencia.get("status_pendencia") or "").strip().upper()
+        resolvido = pendencia.get("resolvido") is True
+        if not resolvido and status not in [
+            "RESOLVIDA", "SOLUCIONADA", "FINALIZADA", "FECHADA", "CANCELADA"
+        ]:
+            pendencias_abertas.append(pendencia)
+
+    maquina_liberada = len(pendencias_abertas) == 0
+    if maquina_liberada:
+        liberar_maquina(codigo_maquina, id_filial)
+
+    return {
+        **(detalhe or {}),
+        "pendencia_resolvida": True,
+        "maquina_liberada": maquina_liberada,
+        "pendencias_abertas_restantes": len(pendencias_abertas),
+    }
+
 
 # ============================================================
 # HANDLER VERCEL
@@ -2013,6 +2279,17 @@ class handler(BaseHTTPRequestHandler):
                     query_param(query, "idFilial", ""),
                 )})
 
+            if acao == "buscarPlanosManutencao":
+                return responder(self, 200, {"sucesso": True, "dados": buscar_planos_manutencao(
+                    query_param(query, "idFilial", ""),
+                    query_param(query, "codigoMaquina", ""),
+                )})
+
+            if acao == "carregarPlanoManutencao":
+                return responder(self, 200, {"sucesso": True, "dados": carregar_plano_manutencao(
+                    query_param(query, "idPlano", None)
+                )})
+
             if acao == "select":
                 tabela = query_param(query, "tabela")
                 filtros = {}
@@ -2141,6 +2418,18 @@ class handler(BaseHTTPRequestHandler):
                 return responder(self, 200, {
                     "sucesso": True,
                     "dados": salvar_anexo_manutencao(body.get("dados", body)),
+                })
+
+            if acao == "salvarPlanoManutencao":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": salvar_plano_manutencao(body.get("dados", body)),
+                })
+
+            if acao == "concluirLiberacaoManutencao":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": concluir_liberacao_manutencao(body.get("dados", body)),
                 })
 
             return responder(self, 400, {"sucesso": False, "erro": f"Ação POST não reconhecida: {acao}"})
