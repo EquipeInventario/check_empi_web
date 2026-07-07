@@ -254,6 +254,7 @@ TABLES = {
             "fornecedor",
             "observacao",
             "ativo",
+            "tipo_maquina",
             "criado_em",
             "atualizado_em",
         ],
@@ -279,26 +280,7 @@ TABLES = {
             "observacao",
             "criado_em",
             "atualizado_em",
-        ],
-        "bool_columns": [],
-        "json_columns": [],
-    },
-    "manutencao_trocas_pecas": {
-        "schema": "check_maquinas",
-        "table": "manutencao_trocas_pecas",
-        "pk": "id",
-        "columns": [
-            "id",
-            "id_maquina_peca",
-            "id_servico",
-            "codigo_maquina",
-            "id_peca",
-            "data_troca",
-            "horimetro_troca",
-            "quantidade",
-            "responsavel",
-            "observacao",
-            "criado_em",
+            "id_filial",
         ],
         "bool_columns": [],
         "json_columns": [],
@@ -822,7 +804,6 @@ def inserir(nome_tabela, dados, conn=None):
         "manutencao_servicos",
         "manutencao_pecas",
         "manutencao_maquina_pecas",
-        "manutencao_trocas_pecas",
         "check_mecanica",
         "nr12_apreciacoes",
         "nr12_acoes",
@@ -1766,14 +1747,14 @@ def salvar_servico_manutencao(payload):
     return _enriquecer_servicos_com_check_mecanica([servico_final])[0] if servico_final else servico_final
 
 
-def buscar_pecas_manutencao(busca="", ativo="", categoria="", limit=1000):
+def buscar_pecas_manutencao(busca="", ativo="", categoria="", tipo_maquina="", limit=1000):
     sql = "SELECT * FROM `check_maquinas`.`manutencao_pecas` WHERE 1=1"
     params = []
 
     if _valor_texto(busca):
         termo = f"%{_valor_texto(busca)}%"
-        sql += " AND (`codigo_peca` LIKE %s OR `descricao` LIKE %s OR `categoria` LIKE %s OR `fornecedor` LIKE %s)"
-        params.extend([termo, termo, termo, termo])
+        sql += " AND (`codigo_peca` LIKE %s OR `descricao` LIKE %s OR `categoria` LIKE %s OR `fornecedor` LIKE %s OR `tipo_maquina` LIKE %s)"
+        params.extend([termo, termo, termo, termo, termo])
 
     if _valor_texto(ativo):
         texto = _valor_texto(ativo).lower()
@@ -1786,7 +1767,14 @@ def buscar_pecas_manutencao(busca="", ativo="", categoria="", limit=1000):
         sql += " AND `categoria` = %s"
         params.append(categoria)
 
-    sql += " ORDER BY `descricao` ASC LIMIT %s"
+    if _valor_texto(tipo_maquina):
+        sql += """
+            AND CONVERT(UPPER(TRIM(`tipo_maquina`)) USING utf8mb4) COLLATE utf8mb4_unicode_ci
+              = CONVERT(UPPER(TRIM(%s)) USING utf8mb4) COLLATE utf8mb4_unicode_ci
+        """
+        params.append(tipo_maquina)
+
+    sql += " ORDER BY `tipo_maquina` ASC, `categoria` ASC, `descricao` ASC LIMIT %s"
     params.append(max(1, min(int(limit or 1000), 2000)))
 
     with conectar() as conn:
@@ -1870,7 +1858,14 @@ def _linha_peca_maquina_com_status(linha, horimetro_atual=None):
     return saida
 
 
-def buscar_pecas_da_maquina(codigo_maquina="", id_maquina="", id_peca="", somente_alertas=False):
+def buscar_pecas_da_maquina(
+    codigo_maquina="",
+    id_maquina="",
+    id_peca="",
+    id_filial="",
+    id_registro="",
+    somente_alertas=False,
+):
     sql = """
         SELECT
             mp.*,
@@ -1879,25 +1874,45 @@ def buscar_pecas_da_maquina(codigo_maquina="", id_maquina="", id_peca="", soment
             p.categoria AS peca_categoria,
             p.unidade AS peca_unidade,
             p.fornecedor AS peca_fornecedor,
+            p.tipo_maquina AS peca_tipo_maquina,
             m.horimetro_atual AS maquina_horimetro_atual,
             m.descricao AS maquina_descricao,
-            m.tipo_maquina AS maquina_tipo
+            m.tipo_maquina AS maquina_tipo,
+            m.id_categoria AS maquina_id_categoria
         FROM `check_maquinas`.`manutencao_maquina_pecas` mp
-        LEFT JOIN `check_maquinas`.`manutencao_pecas` p ON p.id = mp.id_peca
-        LEFT JOIN `check_maquinas`.`maquinas` m ON m.codigo = mp.codigo_maquina
+        LEFT JOIN `check_maquinas`.`manutencao_pecas` p
+            ON p.id = mp.id_peca
+        LEFT JOIN `check_maquinas`.`maquinas` m
+            ON m.id_maquina = mp.id_maquina
+           AND CONVERT(m.codigo USING utf8mb4) COLLATE utf8mb4_unicode_ci
+             = CONVERT(mp.codigo_maquina USING utf8mb4) COLLATE utf8mb4_unicode_ci
+           AND CONVERT(CAST(m.id_filial AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci
+             = CONVERT(CAST(mp.id_filial AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci
         WHERE 1=1
     """
     params = []
+    if _valor_texto(id_registro):
+        sql += " AND mp.id = %s"
+        params.append(id_registro)
     if _valor_texto(codigo_maquina):
-        sql += " AND mp.codigo_maquina = %s"
+        sql += """
+            AND CONVERT(mp.codigo_maquina USING utf8mb4) COLLATE utf8mb4_unicode_ci
+              = CONVERT(%s USING utf8mb4) COLLATE utf8mb4_unicode_ci
+        """
         params.append(_valor_texto(codigo_maquina))
     if _valor_texto(id_maquina):
         sql += " AND mp.id_maquina = %s"
         params.append(id_maquina)
+    if _valor_texto(id_filial):
+        sql += """
+            AND CONVERT(CAST(mp.id_filial AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci
+              = CONVERT(CAST(%s AS CHAR) USING utf8mb4) COLLATE utf8mb4_unicode_ci
+        """
+        params.append(id_filial)
     if _valor_texto(id_peca):
         sql += " AND mp.id_peca = %s"
         params.append(id_peca)
-    sql += " ORDER BY p.descricao ASC, mp.id ASC"
+    sql += " ORDER BY p.categoria ASC, p.descricao ASC, mp.id ASC"
 
     with conectar() as conn:
         with conn.cursor() as cur:
@@ -1910,12 +1925,28 @@ def buscar_pecas_da_maquina(codigo_maquina="", id_maquina="", id_peca="", soment
     return saida
 
 
+def buscar_peca_da_maquina_por_id(id_registro):
+    itens = buscar_pecas_da_maquina(id_registro=id_registro)
+    return itens[0] if itens else None
+
+
 def salvar_peca_da_maquina(payload):
     dados = dict(payload.get("maquinaPeca") or payload.get("maquina_peca") or payload.get("dados") or payload or {})
     id_registro = dados.pop("id", None)
 
+    # O controle de troca será administrado diretamente em manutencao_maquina_pecas.
+    # Não usamos controle por horas para vida útil; horímetro fica apenas como dado da última troca.
     for campo in ["vida_util_horas", "proxima_troca_horimetro", "alerta_antecedencia_horas"]:
         dados.pop(campo, None)
+
+    codigo = _valor_texto(dados.get("codigo_maquina"))
+    id_filial = _valor_texto(dados.get("id_filial"))
+
+    if codigo and (not _valor_texto(dados.get("id_maquina")) or not id_filial):
+        maquina = buscar_maquina_por_codigo(codigo, id_filial=id_filial)
+        if maquina:
+            dados.setdefault("id_maquina", maquina.get("id_maquina"))
+            dados.setdefault("id_filial", str(maquina.get("id_filial")) if maquina.get("id_filial") is not None else None)
 
     if not dados.get("proxima_troca_data") and dados.get("data_ultima_troca") and dados.get("vida_util_dias"):
         dados["proxima_troca_data"] = _somar_dias(dados.get("data_ultima_troca"), dados.get("vida_util_dias"))
@@ -1923,80 +1954,56 @@ def salvar_peca_da_maquina(payload):
     dados["atualizado_em"] = agora_mysql()
     if id_registro:
         atualizar("manutencao_maquina_pecas", dados, {"id": id_registro})
-        return buscar_pecas_da_maquina(id_peca=dados.get("id_peca", "")) if not dados.get("codigo_maquina") else selecionar_um("manutencao_maquina_pecas", {"id": id_registro})
-    return inserir("manutencao_maquina_pecas", dados)
+        return buscar_peca_da_maquina_por_id(id_registro)
 
-
-def buscar_trocas_pecas(codigo_maquina="", id_maquina_peca="", id_peca="", id_servico="", limit=500):
-    sql = """
-        SELECT
-            t.*,
-            p.codigo_peca,
-            p.descricao AS peca_descricao,
-            p.categoria AS peca_categoria,
-            s.tipo_servico,
-            s.data_servico,
-            s.descricao_servico
-        FROM `check_maquinas`.`manutencao_trocas_pecas` t
-        LEFT JOIN `check_maquinas`.`manutencao_pecas` p ON p.id = t.id_peca
-        LEFT JOIN `check_maquinas`.`manutencao_servicos` s ON s.id = t.id_servico
-        WHERE 1=1
-    """
-    params = []
-    if _valor_texto(codigo_maquina):
-        sql += " AND t.codigo_maquina = %s"
-        params.append(codigo_maquina)
-    if _valor_texto(id_maquina_peca):
-        sql += " AND t.id_maquina_peca = %s"
-        params.append(id_maquina_peca)
-    if _valor_texto(id_peca):
-        sql += " AND t.id_peca = %s"
-        params.append(id_peca)
-    if _valor_texto(id_servico):
-        sql += " AND t.id_servico = %s"
-        params.append(id_servico)
-    sql += " ORDER BY t.data_troca DESC LIMIT %s"
-    params.append(max(1, min(int(limit or 500), 2000)))
-
-    with conectar() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, params)
-            return cur.fetchall()
+    criado = inserir("manutencao_maquina_pecas", dados)
+    return buscar_peca_da_maquina_por_id(criado.get("id")) if isinstance(criado, dict) and criado.get("id") else criado
 
 
 def registrar_troca_peca(payload):
-    dados = dict(payload.get("troca") or payload.get("dados") or payload or {})
-    dados.setdefault("data_troca", agora_mysql())
+    """Atualiza o controle da própria peça vinculada à máquina.
 
-    id_maquina_peca = dados.get("id_maquina_peca")
+    O controle da última troca, próxima troca e status fica diretamente
+    em manutencao_maquina_pecas.
+    """
+    dados = dict(payload.get("troca") or payload.get("dados") or payload or {})
+    id_maquina_peca = dados.get("id_maquina_peca") or dados.get("idMaquinaPeca") or dados.get("id")
     if not id_maquina_peca:
-        raise ValueError("Informe id_maquina_peca para registrar a troca.")
+        raise ValueError("Informe id_maquina_peca para atualizar a troca da peça da máquina.")
 
     maquina_peca = selecionar_um("manutencao_maquina_pecas", {"id": id_maquina_peca})
     if not maquina_peca:
         raise ValueError("Peça vinculada à máquina não encontrada.")
 
-    dados.setdefault("codigo_maquina", maquina_peca.get("codigo_maquina"))
-    dados.setdefault("id_peca", maquina_peca.get("id_peca"))
-    troca = inserir("manutencao_trocas_pecas", dados)
+    data_troca = dados.get("data_troca") or dados.get("dataUltimaTroca") or dados.get("data_ultima_troca") or agora_mysql()
+    horimetro = dados.get("horimetro_troca") or dados.get("horimetroUltimaTroca") or dados.get("horimetro_ultima_troca")
 
     atualizacao = {
-        "data_ultima_troca": dados.get("data_troca"),
-        "horimetro_ultima_troca": dados.get("horimetro_troca"),
+        "data_ultima_troca": data_troca,
+        "horimetro_ultima_troca": horimetro,
         "status": "EM_DIA",
         "atualizado_em": agora_mysql(),
     }
 
+    if dados.get("quantidade") not in [None, ""]:
+        atualizacao["quantidade"] = dados.get("quantidade")
+    if dados.get("vida_util_dias") not in [None, ""]:
+        atualizacao["vida_util_dias"] = dados.get("vida_util_dias")
+        maquina_peca["vida_util_dias"] = dados.get("vida_util_dias")
+    if dados.get("alerta_antecedencia_dias") not in [None, ""]:
+        atualizacao["alerta_antecedencia_dias"] = dados.get("alerta_antecedencia_dias")
+    if dados.get("observacao") not in [None, ""]:
+        atualizacao["observacao"] = dados.get("observacao")
+
     if maquina_peca.get("vida_util_dias") not in [None, ""]:
-        proxima_data = _somar_dias(dados.get("data_troca"), maquina_peca.get("vida_util_dias"))
+        proxima_data = _somar_dias(data_troca, maquina_peca.get("vida_util_dias"))
         if proxima_data:
             atualizacao["proxima_troca_data"] = proxima_data
 
     atualizar("manutencao_maquina_pecas", atualizacao, {"id": id_maquina_peca})
 
     return {
-        "troca": troca,
-        "maquinaPeca": selecionar_um("manutencao_maquina_pecas", {"id": id_maquina_peca}),
+        "maquinaPeca": buscar_peca_da_maquina_por_id(id_maquina_peca),
     }
 
 
@@ -2160,7 +2167,7 @@ def carregar_plano_manutencao_maquina(codigo_maquina, id_filial=""):
     for id_ap in ids_apreciacoes:
         acoes.extend(buscar_acoes_nr12(id_apreciacao=id_ap, limit=500))
 
-    pecas = buscar_pecas_da_maquina(codigo_maquina=codigo)
+    pecas = buscar_pecas_da_maquina(codigo_maquina=codigo, id_filial=id_filial)
 
     return {
         "maquina": maquina,
@@ -2169,7 +2176,7 @@ def carregar_plano_manutencao_maquina(codigo_maquina, id_filial=""):
         "servicos": buscar_servicos_manutencao(id_filial=id_filial, codigo_maquina=codigo, limit=200),
         "checksMecanica": buscar_checks_mecanica(codigo_maquina=codigo, id_filial=id_filial, limit=200),
         "pecas": pecas,
-        "trocasPecas": buscar_trocas_pecas(codigo_maquina=codigo, limit=200),
+        "trocasPecas": [],
         "apreciacoesNr12": apreciacoes,
         "acoesNr12": acoes,
         "procedimentosEmergencia": buscar_procedimentos_emergencia(
@@ -2188,7 +2195,7 @@ def buscar_alertas_plano_manutencao(id_filial=""):
         codigo = maquina.get("codigo")
         if not codigo:
             continue
-        pecas_alerta.extend(buscar_pecas_da_maquina(codigo_maquina=codigo, somente_alertas=True))
+        pecas_alerta.extend(buscar_pecas_da_maquina(codigo_maquina=codigo, id_filial=id_filial, somente_alertas=True))
 
     acoes_atrasadas = buscar_acoes_nr12(id_filial=id_filial, somente_atrasadas=True, limit=1000)
     apreciacoes = buscar_apreciacoes_nr12(id_filial=id_filial, limit=1000)
@@ -2289,6 +2296,7 @@ class handler(BaseHTTPRequestHandler):
                     busca=query_param(query, "busca", ""),
                     ativo=query_param(query, "ativo", ""),
                     categoria=query_param(query, "categoria", ""),
+                    tipo_maquina=query_param(query, "tipoMaquina", ""),
                     limit=query_param(query, "limit", "1000"),
                 )})
 
@@ -2297,17 +2305,12 @@ class handler(BaseHTTPRequestHandler):
                     codigo_maquina=query_param(query, "codigoMaquina", ""),
                     id_maquina=query_param(query, "idMaquina", ""),
                     id_peca=query_param(query, "idPeca", ""),
+                    id_filial=query_param(query, "idFilial", ""),
                     somente_alertas=query_param(query, "somenteAlertas", "false").lower() in ["1", "true", "sim"],
                 )})
 
             if acao == "buscarTrocasPecas":
-                return responder(self, 200, {"sucesso": True, "dados": buscar_trocas_pecas(
-                    codigo_maquina=query_param(query, "codigoMaquina", ""),
-                    id_maquina_peca=query_param(query, "idMaquinaPeca", ""),
-                    id_peca=query_param(query, "idPeca", ""),
-                    id_servico=query_param(query, "idServico", ""),
-                    limit=query_param(query, "limit", "500"),
-                )})
+                return responder(self, 200, {"sucesso": True, "dados": []})
 
             if acao == "buscarApreciacoesNr12":
                 return responder(self, 200, {"sucesso": True, "dados": buscar_apreciacoes_nr12(
