@@ -281,6 +281,8 @@ TABLES = {
             "criado_em",
             "atualizado_em",
             "id_filial",
+            "id_check_mec",
+            "motivo_troca",
         ],
         "bool_columns": [],
         "json_columns": [],
@@ -1994,6 +1996,24 @@ def registrar_troca_peca(payload):
         atualizacao["alerta_antecedencia_dias"] = dados.get("alerta_antecedencia_dias")
     if dados.get("observacao") not in [None, ""]:
         atualizacao["observacao"] = dados.get("observacao")
+
+    motivo_troca = (
+        dados.get("motivo_troca")
+        or dados.get("motivoTroca")
+        or dados.get("origem_troca")
+        or dados.get("origemTroca")
+    )
+    if motivo_troca not in [None, ""]:
+        atualizacao["motivo_troca"] = motivo_troca
+
+    id_check_mec = (
+        dados.get("id_check_mec")
+        or dados.get("idCheckMec")
+        or dados.get("id_check_mecanica")
+        or dados.get("idCheckMecanica")
+    )
+    if id_check_mec not in [None, ""]:
+        atualizacao["id_check_mec"] = str(id_check_mec)
 
     if maquina_peca.get("vida_util_dias") not in [None, ""]:
         proxima_data = _somar_dias(data_troca, maquina_peca.get("vida_util_dias"))
