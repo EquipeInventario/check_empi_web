@@ -1529,6 +1529,71 @@ def buscar_check_mecanica(id_servico=""):
     return selecionar_um("check_mecanica", {"id_servico": id_servico})
 
 
+
+
+def buscar_checks_mecanica(codigo_maquina="", id_filial="", limit=200):
+    """Busca os checklists da mecânica vinculados aos serviços da máquina.
+
+    A tabela check_mecanica não é cabeçalho independente; ela usa
+    manutencao_servicos como cabeçalho via id_servico. Por isso a busca
+    precisa ser feita por JOIN com manutencao_servicos.
+    """
+    codigo = _valor_texto(codigo_maquina)
+    filtros_sql = []
+    params = []
+
+    if codigo:
+        filtros_sql.append("s.`codigo_maquina` = %s")
+        params.append(codigo)
+    if possui_filial(id_filial):
+        filtros_sql.append("s.`id_filial` = %s")
+        params.append(id_filial)
+
+    where = " WHERE " + " AND ".join(filtros_sql) if filtros_sql else ""
+
+    try:
+        limit_int = int(limit or 200)
+    except Exception:
+        limit_int = 200
+    limit_int = max(1, min(limit_int, 2000))
+
+    sql = f"""
+        SELECT
+            c.*,
+            s.`id_filial`,
+            s.`id_maquina`,
+            s.`codigo_maquina`,
+            s.`id_pendencia`,
+            s.`id_check`,
+            s.`tipo_servico`,
+            s.`data_servico`,
+            s.`horimetro_servico`,
+            s.`descricao_servico`,
+            s.`responsavel_execucao`,
+            s.`responsavel_liberacao`,
+            s.`resultado_liberacao`,
+            s.`status_servico`
+        FROM `check_maquinas`.`check_mecanica` c
+        INNER JOIN `check_maquinas`.`manutencao_servicos` s
+            ON s.`id` = c.`id_servico`
+        {where}
+        ORDER BY s.`data_servico` DESC, c.`criado_em` DESC
+        LIMIT {limit_int}
+    """
+
+    with conectar() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+
+    saida = []
+    for row in rows:
+        item = dict(row)
+        item["itens"] = _check_mecanica_para_lista(item)
+        item["checklist_liberacao_json"] = item["itens"]
+        saida.append(normalizar_linha_saida("check_mecanica", item))
+    return saida
+
 def salvar_check_mecanica(id_servico, itens, servico=None, conn=None):
     dados = _montar_check_mecanica_linha(id_servico, itens, servico=servico)
     existente = buscar_check_mecanica(id_servico)
@@ -2102,7 +2167,7 @@ def carregar_plano_manutencao_maquina(codigo_maquina, id_filial=""):
         "checks": checks,
         "pendencias": buscar_pendencias_da_maquina(codigo, id_filial=id_filial),
         "servicos": buscar_servicos_manutencao(id_filial=id_filial, codigo_maquina=codigo, limit=200),
-        "checksMecanica": buscar_checks_mecanica(codigo_maquina=codigo, limit=200),
+        "checksMecanica": buscar_checks_mecanica(codigo_maquina=codigo, id_filial=id_filial, limit=200),
         "pecas": pecas,
         "trocasPecas": buscar_trocas_pecas(codigo_maquina=codigo, limit=200),
         "apreciacoesNr12": apreciacoes,
