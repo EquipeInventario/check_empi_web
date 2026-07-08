@@ -947,6 +947,94 @@ def buscar_filiais():
             cur.execute(sql)
             return cur.fetchall()
 
+def _normalizar_operador_saida(operador, matricula_busca=""):
+    if not operador:
+        return None
+
+    saida = serializar(dict(operador))
+
+    if not _valor_texto(saida.get("matricula")):
+        for campo in ["matricula_operador", "codigo", "cod_operador", "registro"]:
+            if _valor_texto(saida.get(campo)):
+                saida["matricula"] = _valor_texto(saida.get(campo))
+                break
+    if not _valor_texto(saida.get("matricula")):
+        saida["matricula"] = _valor_texto(matricula_busca)
+
+    if not _valor_texto(saida.get("nome")):
+        for campo in ["operador", "nome_operador", "colaborador", "funcionario", "nome_funcionario"]:
+            if _valor_texto(saida.get(campo)):
+                saida["nome"] = _valor_texto(saida.get(campo))
+                break
+
+    apto = _valor_texto(saida.get("apto"))
+    if not apto:
+        ativo = _valor_texto(saida.get("ativo")).lower()
+        situacao = _valor_texto(saida.get("situacao")).lower()
+        status = _valor_texto(saida.get("status")).lower()
+        if ativo in ["1", "s", "sim", "true", "ativo"] or situacao in ["ativo", "apto", "liberado"] or status in ["ativo", "apto", "liberado"]:
+            apto = "S"
+        elif ativo in ["0", "n", "nao", "não", "false", "inativo"] or situacao in ["inativo", "inapto", "bloqueado"] or status in ["inativo", "inapto", "bloqueado"]:
+            apto = "N"
+    else:
+        apto_norm = apto.strip().lower()
+        if apto_norm in ["sim", "s", "1", "true", "apto", "liberado"]:
+            apto = "S"
+        elif apto_norm in ["nao", "não", "n", "0", "false", "inapto", "bloqueado"]:
+            apto = "N"
+    if apto:
+        saida["apto"] = apto
+
+    id_filial = _valor_texto(saida.get("id_filial"))
+    if id_filial:
+        try:
+            for filial in buscar_filiais():
+                fid = _valor_texto(filial.get("id") or filial.get("id_filial"))
+                if fid == id_filial:
+                    for campo in ["filial", "cidade", "estado"]:
+                        if not _valor_texto(saida.get(campo)) and campo in filial:
+                            saida[campo] = filial.get(campo)
+                    break
+        except Exception:
+            pass
+
+    return saida
+
+
+def buscar_operador_por_matricula(matricula):
+    texto = _valor_texto(matricula)
+    if not texto:
+        return None
+
+    tabelas = [
+        ("check_maquinas", "operador"),
+        ("check_maquinas", "operadores"),
+        ("base_gestao_master", "operador"),
+        ("base_gestao_master", "operadores"),
+    ]
+    campos_matricula = ["matricula", "matricula_operador", "registro", "codigo", "cod_operador"]
+
+    with conectar() as conn:
+        for schema, tabela in tabelas:
+            for campo in campos_matricula:
+                sql = f"""
+                    SELECT *
+                    FROM `{schema}`.`{tabela}`
+                    WHERE CAST(`{campo}` AS CHAR) = %s
+                    LIMIT 1
+                """
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(sql, [texto])
+                        row = cur.fetchone()
+                    if row:
+                        return _normalizar_operador_saida(row, matricula_busca=texto)
+                except Exception:
+                    continue
+
+    return None
+
+
 
 def buscar_maquinas(id_filial=""):
     filtros = {}
@@ -1170,7 +1258,14 @@ def atualizar_controle_preventiva_maquina(
     )
 
 
-def finalizar_turno(id_check, codigo_maquina, id_filial, horimetro_final):
+def finalizar_turno(
+    id_check,
+    codigo_maquina,
+    id_filial,
+    horimetro_final,
+    carga_final=None,
+    ultima_carga_realizada=None,
+):
     agora = agora_mysql()
 
     with conectar() as conn:
@@ -1189,25 +1284,30 @@ def finalizar_turno(id_check, codigo_maquina, id_filial, horimetro_final):
                 )
                 possui_pendencia = cur.fetchone() is not None
 
-            atualizar(
-                "check_empi",
-                {
-                    "horimetro_final": horimetro_final,
-                    "status_check": "FINALIZADO",
-                    "data_finalizacao": agora,
-                    "atualizado_em": agora,
-                },
-                {"id": id_check},
-                conn=conn,
-            )
+            dados_check = {
+                "horimetro_final": horimetro_final,
+                "status_check": "FINALIZADO",
+                "data_finalizacao": agora,
+                "atualizado_em": agora,
+            }
+            dados_maquina = {
+                "ativo": "Manutenção" if possui_pendencia else "Liberado",
+                "horimetro_atual": horimetro_final,
+                "ultimo_reg_horimetro": agora,
+            }
 
+            if carga_final not in [None, ""]:
+                dados_check["carga_atual"] = carga_final
+                dados_maquina["carga_atual"] = carga_final
+            if ultima_carga_realizada not in [None, ""]:
+                carga_em = normalizar_data_mysql(ultima_carga_realizada)
+                dados_check["ultima_carga_realizada"] = carga_em
+                dados_maquina["ultima_carga_realizada"] = carga_em
+
+            atualizar("check_empi", dados_check, {"id": id_check}, conn=conn)
             atualizar(
                 "maquinas",
-                {
-                    "ativo": "Manutenção" if possui_pendencia else "Liberado",
-                    "horimetro_atual": horimetro_final,
-                    "ultimo_reg_horimetro": agora,
-                },
+                dados_maquina,
                 {"codigo": codigo_maquina, "id_filial": id_filial},
                 conn=conn,
             )
@@ -1221,7 +1321,6 @@ def finalizar_turno(id_check, codigo_maquina, id_filial, horimetro_final):
         except Exception:
             conn.rollback()
             raise
-
 
 def salvar_check(dados_check):
     if dados_check is None:
@@ -1245,13 +1344,20 @@ def salvar_check(dados_check):
             horimetro = dados_check.get("horimetro_inicial")
 
             if codigo and id_filial and horimetro is not None:
+                dados_maquina = {
+                    "ativo": "Em uso",
+                    "horimetro_atual": horimetro,
+                    "ultimo_reg_horimetro": agora,
+                }
+                if dados_check.get("carga_atual") not in [None, ""]:
+                    dados_maquina["carga_atual"] = dados_check.get("carga_atual")
+                if dados_check.get("ultima_carga_realizada") not in [None, ""]:
+                    dados_maquina["ultima_carga_realizada"] = normalizar_data_mysql(
+                        dados_check.get("ultima_carga_realizada")
+                    )
                 atualizar(
                     "maquinas",
-                    {
-                        "ativo": "Em uso",
-                        "horimetro_atual": horimetro,
-                        "ultimo_reg_horimetro": agora,
-                    },
+                    dados_maquina,
                     {"codigo": codigo, "id_filial": id_filial},
                     conn=conn,
                 )
@@ -1308,13 +1414,20 @@ def salvar_check_com_pendencias(dados_check, pendencias=None):
             horimetro = dados_check.get("horimetro_inicial")
 
             if codigo and id_filial and horimetro is not None:
+                dados_maquina = {
+                    "ativo": "Em uso",
+                    "horimetro_atual": horimetro,
+                    "ultimo_reg_horimetro": agora,
+                }
+                if dados_check.get("carga_atual") not in [None, ""]:
+                    dados_maquina["carga_atual"] = dados_check.get("carga_atual")
+                if dados_check.get("ultima_carga_realizada") not in [None, ""]:
+                    dados_maquina["ultima_carga_realizada"] = normalizar_data_mysql(
+                        dados_check.get("ultima_carga_realizada")
+                    )
                 atualizar(
                     "maquinas",
-                    {
-                        "ativo": "Em uso",
-                        "horimetro_atual": horimetro,
-                        "ultimo_reg_horimetro": agora,
-                    },
+                    dados_maquina,
                     {"codigo": codigo, "id_filial": id_filial},
                     conn=conn,
                 )
@@ -2251,6 +2364,9 @@ class handler(BaseHTTPRequestHandler):
             if acao == "buscarFiliais":
                 return responder(self, 200, {"sucesso": True, "dados": buscar_filiais()})
 
+            if acao in ["buscarOperadorPorMatricula", "buscarOperador"]:
+                return responder(self, 200, {"sucesso": True, "dados": buscar_operador_por_matricula(query_param(query, "matricula", ""))})
+
             if acao == "buscarMaquinas":
                 return responder(self, 200, {"sucesso": True, "dados": buscar_maquinas(query_param(query, "idFilial", ""))})
 
@@ -2371,9 +2487,16 @@ class handler(BaseHTTPRequestHandler):
                     limit=query_param(query, "limit", "500"),
                 )})
 
-            if acao in ["buscarCheckMecanica", "buscarChecksMecanica"]:
+            if acao == "buscarCheckMecanica":
                 return responder(self, 200, {"sucesso": True, "dados": buscar_check_mecanica(
                     id_servico=query_param(query, "idServico", ""),
+                )})
+
+            if acao == "buscarChecksMecanica":
+                return responder(self, 200, {"sucesso": True, "dados": buscar_checks_mecanica(
+                    codigo_maquina=query_param(query, "codigoMaquina", ""),
+                    id_filial=query_param(query, "idFilial", ""),
+                    limit=query_param(query, "limit", "200"),
                 )})
 
             if acao == "buscarAlertasPlanoManutencao":
@@ -2411,6 +2534,9 @@ class handler(BaseHTTPRequestHandler):
             if acao == "autenticarUsuarioWeb":
                 usuario = autenticar_usuario_web(body.get("usuario", ""), body.get("senha", ""))
                 return responder(self, 200, {"sucesso": usuario is not None, "dados": usuario})
+
+            if acao in ["buscarOperadorPorMatricula", "buscarOperador"]:
+                return responder(self, 200, {"sucesso": True, "dados": buscar_operador_por_matricula(body.get("matricula", "") or body.get("dados", {}).get("matricula", ""))})
 
             if acao == "insert":
                 return responder(self, 200, {"sucesso": True, "dados": inserir(body.get("tabela"), body.get("dados", {}))})
@@ -2589,6 +2715,8 @@ class handler(BaseHTTPRequestHandler):
                     codigo_maquina=body.get("codigoMaquina", ""),
                     id_filial=body.get("idFilial"),
                     horimetro_final=body.get("horimetroFinal"),
+                    carga_final=body.get("cargaFinal", body.get("carga_atual")),
+                    ultima_carga_realizada=body.get("ultimaCargaRealizada", body.get("ultima_carga_realizada")),
                 )})
 
             if acao == "atualizarPendenciaAnexos":
