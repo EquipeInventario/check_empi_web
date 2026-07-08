@@ -1266,6 +1266,23 @@ def finalizar_turno(
     carga_final=None,
     ultima_carga_realizada=None,
 ):
+    """Finaliza um check aberto do app mobile sem quebrar o fluxo antigo.
+
+    Esta ação é usada diretamente pelo app do operador. Por isso ela precisa
+    ser conservadora: primeiro fecha o check_empi com os campos essenciais e
+    depois atualiza a máquina. Os campos de bateria/carga são opcionais e não
+    podem impedir a finalização do turno caso alguma base ainda esteja sem
+    esses campos.
+    """
+    if id_check in [None, ""]:
+        raise ValueError("Informe idCheck para finalizar o turno.")
+    if not _valor_texto(codigo_maquina):
+        raise ValueError("Informe codigoMaquina para finalizar o turno.")
+    if id_filial in [None, ""]:
+        raise ValueError("Informe idFilial para finalizar o turno.")
+    if horimetro_final in [None, ""]:
+        raise ValueError("Informe horimetroFinal para finalizar o turno.")
+
     agora = agora_mysql()
 
     with conectar() as conn:
@@ -1273,44 +1290,79 @@ def finalizar_turno(
             with conn.cursor() as cur:
                 cur.execute(
                     """
+                    SELECT `id`, `horimetro_inicial`
+                    FROM `check_maquinas`.`check_empi`
+                    WHERE `id` = %s
+                    LIMIT 1
+                    """,
+                    [id_check],
+                )
+                check = cur.fetchone()
+                if not check:
+                    raise ValueError(f"Check não encontrado para finalização: {id_check}")
+
+                cur.execute(
+                    """
                     SELECT `id`
                     FROM `check_maquinas`.`check_empi_pendencias`
                     WHERE `empilhadeira` = %s
                       AND `id_filial` = %s
                       AND `status_pendencia` IN ('ABERTA', 'EM_ANALISE')
+                      AND (`resolvido` = 0 OR `resolvido` IS NULL)
                     LIMIT 1
                     """,
                     [codigo_maquina, id_filial],
                 )
                 possui_pendencia = cur.fetchone() is not None
 
-            dados_check = {
-                "horimetro_final": horimetro_final,
-                "status_check": "FINALIZADO",
-                "data_finalizacao": agora,
-                "atualizado_em": agora,
-            }
-            dados_maquina = {
+            # Mantém o fechamento do check igual ao fluxo original do mobile.
+            atualizar(
+                "check_empi",
+                {
+                    "horimetro_final": horimetro_final,
+                    "status_check": "FINALIZADO",
+                    "data_finalizacao": agora,
+                    "atualizado_em": agora,
+                },
+                {"id": id_check},
+                conn=conn,
+            )
+
+            dados_maquina_base = {
                 "ativo": "Manutenção" if possui_pendencia else "Liberado",
                 "horimetro_atual": horimetro_final,
                 "ultimo_reg_horimetro": agora,
             }
+            dados_maquina = dict(dados_maquina_base)
 
             if carga_final not in [None, ""]:
-                dados_check["carga_atual"] = carga_final
                 dados_maquina["carga_atual"] = carga_final
             if ultima_carga_realizada not in [None, ""]:
-                carga_em = normalizar_data_mysql(ultima_carga_realizada)
-                dados_check["ultima_carga_realizada"] = carga_em
-                dados_maquina["ultima_carga_realizada"] = carga_em
+                dados_maquina["ultima_carga_realizada"] = normalizar_data_mysql(
+                    ultima_carga_realizada
+                )
 
-            atualizar("check_empi", dados_check, {"id": id_check}, conn=conn)
-            atualizar(
-                "maquinas",
-                dados_maquina,
-                {"codigo": codigo_maquina, "id_filial": id_filial},
-                conn=conn,
-            )
+            try:
+                atualizar(
+                    "maquinas",
+                    dados_maquina,
+                    {"codigo": codigo_maquina, "id_filial": id_filial},
+                    conn=conn,
+                )
+            except OperationalError as exc:
+                # Se alguma base ainda não tiver os campos novos de carga,
+                # não bloqueia a finalização do turno. Reaplica somente o
+                # fechamento operacional da máquina.
+                mensagem = str(exc).lower()
+                if "carga_atual" in mensagem or "ultima_carga_realizada" in mensagem or "unknown column" in mensagem:
+                    atualizar(
+                        "maquinas",
+                        dados_maquina_base,
+                        {"codigo": codigo_maquina, "id_filial": id_filial},
+                        conn=conn,
+                    )
+                else:
+                    raise
 
             conn.commit()
             return {
