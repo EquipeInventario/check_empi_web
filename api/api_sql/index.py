@@ -223,6 +223,9 @@ TABLES = {
             "id_check",
             "tipo_servico",
             "data_servico",
+            "entrada_oficina",
+            "tempo_manutencao",
+            "saida_oficina",
             "horimetro_servico",
             "descricao_servico",
             "condicoes_seguranca",
@@ -232,14 +235,13 @@ TABLES = {
             "observacao_liberacao",
             "tempo_parada_minutos",
             "status_servico",
-            "checklist_liberacao_json",
             "plano_acao_json",
             "criado_por",
             "criado_em",
             "atualizado_em",
         ],
         "bool_columns": [],
-        "json_columns": ["checklist_liberacao_json", "plano_acao_json"],
+        "json_columns": ["plano_acao_json"],
     },
     "manutencao_pecas": {
         "schema": "check_maquinas",
@@ -678,6 +680,8 @@ def normalizar_valor_para_banco(nome_tabela, coluna, valor):
     if coluna.startswith("data_") or coluna.endswith("_em") or coluna in [
         "ultima_manutencao",
         "ultimo_reg_horimetro",
+        "entrada_oficina",
+        "saida_oficina",
     ]:
         return normalizar_data_mysql(valor)
 
@@ -1423,6 +1427,191 @@ def _valor_data(valor):
     return None
 
 
+
+def _status_oficina_aberto(status):
+    texto = _valor_texto(status).upper().replace(" ", "_")
+    return texto in ["EM_ANDAMENTO", "EM_MANUTENCAO", "EM_MANUTENÇÃO", "ABERTO"]
+
+
+def _resultado_nao_liberado(resultado):
+    texto = _valor_texto(resultado).upper().replace(" ", "_")
+    return texto in [
+        "NAO_LIBERADO",
+        "NÃO_LIBERADO",
+        "REPROVADO",
+        "PENDENTE",
+        "EM_ANDAMENTO",
+    ]
+
+
+def _resultado_liberado(resultado):
+    texto = _valor_texto(resultado).upper().replace(" ", "_")
+    return texto in [
+        "LIBERADO",
+        "LIBERADO_COM_RESTRICAO",
+        "LIBERADO_COM_RESTRIÇÃO",
+    ]
+
+
+def _calcular_tempo_oficina(entrada, saida):
+    inicio = _valor_data(entrada)
+    fim = _valor_data(saida)
+    if not inicio or not fim:
+        return None, None
+
+    segundos = max(0.0, (fim - inicio).total_seconds())
+    minutos = int(round(segundos / 60.0))
+    dias = round(segundos / 86400.0, 2)
+    return minutos, dias
+
+
+def _aplicar_controle_oficina(dados, existente=None):
+    """Prepara entrada/saída e duração sem exigir atualização contínua no banco."""
+    dados = dict(dados or {})
+    base = dict(existente or {})
+    efetivo = dict(base)
+    efetivo.update({k: v for k, v in dados.items() if v is not None})
+
+    status = _valor_texto(efetivo.get("status_servico")).upper().replace(" ", "_")
+    resultado = _valor_texto(efetivo.get("resultado_liberacao"))
+
+    entrada = efetivo.get("entrada_oficina")
+    saida = efetivo.get("saida_oficina")
+
+    if _status_oficina_aberto(status):
+        if not entrada:
+            entrada = agora_mysql()
+            dados["entrada_oficina"] = entrada
+        dados["saida_oficina"] = None
+        dados["tempo_parada_minutos"] = None
+        dados["tempo_manutencao"] = None
+        return dados
+
+    deve_encerrar = bool(entrada) and (
+        status in ["FINALIZADO", "CONCLUIDO", "CONCLUÍDO", "FECHADO"]
+        or _resultado_liberado(resultado)
+    )
+
+    if _resultado_nao_liberado(resultado):
+        dados["status_servico"] = "EM_ANDAMENTO"
+        if not entrada:
+            entrada = agora_mysql()
+            dados["entrada_oficina"] = entrada
+        dados["saida_oficina"] = None
+        dados["tempo_parada_minutos"] = None
+        dados["tempo_manutencao"] = None
+        return dados
+
+    if deve_encerrar:
+        if not saida:
+            saida = agora_mysql()
+            dados["saida_oficina"] = saida
+        minutos, dias = _calcular_tempo_oficina(entrada, saida)
+        if minutos is not None:
+            dados["tempo_parada_minutos"] = minutos
+            dados["tempo_manutencao"] = dias
+
+    return dados
+
+
+def _enriquecer_tempo_oficina(servico):
+    if not servico:
+        return servico
+    item = dict(servico)
+    entrada = item.get("entrada_oficina")
+    saida = item.get("saida_oficina")
+    aberto = bool(entrada) and not bool(saida) and _status_oficina_aberto(item.get("status_servico"))
+    fim = datetime.now() if aberto else _valor_data(saida)
+    minutos, dias = _calcular_tempo_oficina(entrada, fim)
+    item["oficina_aberta"] = aberto
+    if minutos is not None:
+        item["tempo_parada_minutos_calculado"] = minutos
+        item["tempo_manutencao_calculado"] = dias
+    return item
+
+
+def buscar_servico_oficina_aberto(codigo_maquina, id_filial=""):
+    codigo = _valor_texto(codigo_maquina)
+    if not codigo:
+        return None
+
+    sql = """
+        SELECT *
+        FROM `check_maquinas`.`manutencao_servicos`
+        WHERE `codigo_maquina` = %s
+          AND `entrada_oficina` IS NOT NULL
+          AND `saida_oficina` IS NULL
+          AND `status_servico` IN ('EM_ANDAMENTO', 'EM MANUTENCAO', 'EM MANUTENÇÃO', 'ABERTO')
+    """
+    params = [codigo]
+    if possui_filial(id_filial):
+        sql += " AND `id_filial` = %s"
+        params.append(id_filial)
+    sql += " ORDER BY `entrada_oficina` DESC, `id` DESC LIMIT 1"
+
+    with conectar() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            row = cur.fetchone()
+
+    if not row:
+        return None
+    return _enriquecer_tempo_oficina(normalizar_linha_saida("manutencao_servicos", row))
+
+
+def iniciar_manutencao_oficina(payload):
+    payload = dict(payload or {})
+    servico = dict(payload.get("servico") or payload.get("dados") or payload)
+    codigo = _valor_texto(servico.get("codigo_maquina") or payload.get("codigoMaquina"))
+    id_filial = servico.get("id_filial") or payload.get("idFilial")
+
+    existente = buscar_servico_oficina_aberto(codigo, id_filial)
+    if existente:
+        return existente
+
+    servico["codigo_maquina"] = codigo
+    if id_filial not in [None, ""]:
+        servico["id_filial"] = id_filial
+    servico["status_servico"] = "EM_ANDAMENTO"
+    servico["entrada_oficina"] = servico.get("entrada_oficina") or agora_mysql()
+    servico["saida_oficina"] = None
+    servico["tempo_manutencao"] = None
+    servico["tempo_parada_minutos"] = None
+
+    return salvar_servico_manutencao({"servico": servico})
+
+
+def finalizar_manutencao_oficina(payload):
+    payload = dict(payload or {})
+    servico = dict(payload.get("servico") or payload.get("dados") or payload)
+    id_servico = servico.get("id") or payload.get("idServico")
+
+    existente = selecionar_um("manutencao_servicos", {"id": id_servico}) if id_servico else None
+    if not existente:
+        codigo = _valor_texto(servico.get("codigo_maquina") or payload.get("codigoMaquina"))
+        id_filial = servico.get("id_filial") or payload.get("idFilial")
+        existente = buscar_servico_oficina_aberto(codigo, id_filial)
+
+    if not existente:
+        raise ValueError("Nenhum serviço de oficina em andamento foi encontrado.")
+
+    dados = dict(existente)
+    dados.update(servico)
+    dados["id"] = existente.get("id")
+    if not _valor_texto(servico.get("status_servico")):
+        dados["status_servico"] = "FINALIZADO"
+
+    if not _valor_texto(dados.get("resultado_liberacao")):
+        raise ValueError("Informe o resultado da liberação para finalizar a oficina.")
+
+    return salvar_servico_manutencao({
+        "servico": dados,
+        "checklistMecanica": payload.get("checklistMecanica") or payload.get("checklist_mecanica") or [],
+        "resolverPendencia": payload.get("resolverPendencia") or payload.get("resolver_pendencia") or False,
+        "atualizarPreventiva": payload.get("atualizarPreventiva") or payload.get("atualizar_preventiva") or False,
+    })
+
+
 def _somar_dias(valor_data, dias):
     data_base = _valor_data(valor_data)
     try:
@@ -1701,6 +1890,10 @@ def buscar_checks_mecanica(codigo_maquina="", id_filial="", limit=200):
             s.`id_check`,
             s.`tipo_servico`,
             s.`data_servico`,
+            s.`entrada_oficina`,
+            s.`tempo_manutencao`,
+            s.`saida_oficina`,
+            s.`tempo_parada_minutos`,
             s.`horimetro_servico`,
             s.`descricao_servico`,
             s.`responsavel_execucao`,
@@ -1756,12 +1949,15 @@ def _check_mecanica_para_lista(row):
 
 
 def _enriquecer_servicos_com_check_mecanica(servicos):
-    for servico in servicos:
+    saida = []
+    for registro in servicos:
+        servico = _enriquecer_tempo_oficina(registro)
         check = buscar_check_mecanica(servico.get("id"))
         if check:
             servico["check_mecanica"] = check
             servico["checklist_liberacao_json"] = _check_mecanica_para_lista(check)
-    return servicos
+        saida.append(servico)
+    return saida
 
 def buscar_servicos_manutencao(
     id_filial="",
@@ -1809,11 +2005,22 @@ def salvar_servico_manutencao(payload):
     atualizar_preventiva = bool(payload.get("atualizarPreventiva") or payload.get("atualizar_preventiva"))
 
     id_servico = servico.pop("id", None)
-    servico.setdefault("status_servico", "FINALIZADO")
+    existente = selecionar_um("manutencao_servicos", {"id": id_servico}) if id_servico else None
+
+    if not _valor_texto(servico.get("status_servico")):
+        servico["status_servico"] = (existente or {}).get("status_servico") or "FINALIZADO"
+
     if not servico.get("data_servico"):
-        servico["data_servico"] = agora_mysql()
+        servico["data_servico"] = (existente or {}).get("data_servico") or agora_mysql()
     else:
         servico["data_servico"] = normalizar_data_mysql(servico.get("data_servico"))
+
+    if servico.get("entrada_oficina") not in [None, ""]:
+        servico["entrada_oficina"] = normalizar_data_mysql(servico.get("entrada_oficina"))
+    if servico.get("saida_oficina") not in [None, ""]:
+        servico["saida_oficina"] = normalizar_data_mysql(servico.get("saida_oficina"))
+
+    servico = _aplicar_controle_oficina(servico, existente=existente)
     servico["atualizado_em"] = agora_mysql()
 
     if not _valor_texto(servico.get("codigo_maquina")):
@@ -1860,8 +2067,16 @@ def salvar_servico_manutencao(payload):
         or servico.get("responsavel_execucao")
     )
     resultado = _valor_texto((salvo or {}).get("resultado_liberacao") or servico.get("resultado_liberacao")).upper()
+    oficina_aberta = bool((salvo or {}).get("entrada_oficina")) and not bool((salvo or {}).get("saida_oficina"))
 
-    if resolver_pend and id_pendencia and responsavel:
+    if oficina_aberta and codigo:
+        atualizar(
+            "maquinas",
+            {"ativo": "Manutenção"},
+            {"codigo": codigo, **({"id_filial": id_filial} if possui_filial(id_filial) else {})},
+        )
+
+    if resolver_pend and not oficina_aberta and id_pendencia and responsavel:
         resolver_pendencia(
             id_pendencia,
             responsavel,
@@ -1869,13 +2084,13 @@ def salvar_servico_manutencao(payload):
             (salvo or {}).get("observacao_liberacao") or servico.get("observacao_liberacao"),
         )
 
-    if resultado == "LIBERADO" and codigo:
+    if not oficina_aberta and _resultado_liberado(resultado) and codigo:
         pendencias = buscar_pendencias_da_maquina(codigo, id_filial)
         abertas = [p for p in pendencias if not p.get("resolvido") and not _normalizar_status_fechado(p.get("status_pendencia"))]
         if not abertas:
             liberar_maquina(codigo, id_filial)
 
-    if atualizar_preventiva and codigo:
+    if atualizar_preventiva and not oficina_aberta and codigo:
         horimetro = (salvo or {}).get("horimetro_servico") or servico.get("horimetro_servico")
         if horimetro is not None:
             maquina = buscar_maquina_por_codigo(codigo, id_filial)
@@ -2454,6 +2669,12 @@ class handler(BaseHTTPRequestHandler):
                     query_param(query, "idFilial", ""),
                 )})
 
+            if acao == "buscarServicoOficinaAberto":
+                return responder(self, 200, {"sucesso": True, "dados": buscar_servico_oficina_aberto(
+                    query_param(query, "codigoMaquina", ""),
+                    query_param(query, "idFilial", ""),
+                )})
+
             if acao == "buscarServicosManutencao":
                 return responder(self, 200, {"sucesso": True, "dados": buscar_servicos_manutencao(
                     id_filial=query_param(query, "idFilial", ""),
@@ -2633,6 +2854,18 @@ class handler(BaseHTTPRequestHandler):
                 return responder(self, 200, {
                     "sucesso": True,
                     "dados": salvar_servico_manutencao(body.get("dados", body)),
+                })
+
+            if acao == "iniciarManutencaoOficina":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": iniciar_manutencao_oficina(body.get("dados", body)),
+                })
+
+            if acao == "finalizarManutencaoOficina":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": finalizar_manutencao_oficina(body.get("dados", body)),
                 })
 
             if acao == "salvarCheckMecanica":
