@@ -1,6 +1,7 @@
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime, date
+from calendar import monthrange
 from decimal import Decimal
 import json
 import os
@@ -51,6 +52,8 @@ TABLES = {
             "tipo_torre",
             "carga_atual",
             "ultima_carga_realizada",
+            "ultima_preventiva",
+            "prox_preventiva",
         ],
         "bool_columns": ["adaptada_bobina", "possui_gdi"],
         "json_columns": [],
@@ -682,6 +685,8 @@ def normalizar_valor_para_banco(nome_tabela, coluna, valor):
         "ultimo_reg_horimetro",
         "entrada_oficina",
         "saida_oficina",
+        "ultima_preventiva",
+        "prox_preventiva",
     ]:
         return normalizar_data_mysql(valor)
 
@@ -1149,29 +1154,43 @@ def liberar_maquina(codigo_maquina, id_filial=""):
 def atualizar_controle_preventiva_maquina(
     codigo_maquina,
     id_filial,
-    horimetro_atual,
-    horimetro_manutencao,
-    intervalo_preventiva_horas,
-    proxima_manutencao_hora,
-    ultimo_registro_horimetro=None,
-    ultima_manutencao=None,
+    ultima_preventiva=None,
+    proxima_preventiva=None,
 ):
-    filtros = {"codigo": codigo_maquina}
+    """Atualiza o calendário mensal da preventiva da máquina.
+
+    O horímetro continua sendo armazenado no cadastro e nos serviços apenas
+    como informação operacional. O vencimento da preventiva passa a depender
+    exclusivamente de ultima_preventiva e prox_preventiva.
+    """
+    codigo = _valor_texto(codigo_maquina)
+    if not codigo:
+        raise ValueError("Informe codigoMaquina para atualizar a preventiva.")
+
+    ultima = _valor_data(ultima_preventiva)
+    proxima = _valor_data(proxima_preventiva)
+
+    if ultima and not proxima:
+        proxima_iso = _somar_meses(ultima, 1)
+        proxima = _valor_data(proxima_iso)
+
+    if not ultima and not proxima:
+        raise ValueError("Informe ultimaPreventiva ou proximaPreventiva.")
+
+    if ultima and proxima and proxima.date() <= ultima.date():
+        raise ValueError("A próxima preventiva deve ser posterior à última preventiva.")
+
+    dados = {}
+    if ultima:
+        dados["ultima_preventiva"] = ultima.date().isoformat()
+    if proxima:
+        dados["prox_preventiva"] = proxima.date().isoformat()
+
+    filtros = {"codigo": codigo}
     if possui_filial(id_filial):
         filtros["id_filial"] = id_filial
 
-    return atualizar(
-        "maquinas",
-        {
-            "horimetro_atual": horimetro_atual,
-            "ultimo_reg_horimetro": ultimo_registro_horimetro or agora_mysql(),
-            "horimetro_manutencao": horimetro_manutencao,
-            "ultima_manutencao": ultima_manutencao or agora_mysql(),
-            "intervalo_preventiva_horas": intervalo_preventiva_horas,
-            "prox_manutencao_hora": proxima_manutencao_hora,
-        },
-        filtros,
-    )
+    return atualizar("maquinas", dados, filtros)
 
 
 def finalizar_turno(
@@ -1612,6 +1631,23 @@ def finalizar_manutencao_oficina(payload):
     })
 
 
+def _somar_meses(valor_data, meses=1):
+    data_base = _valor_data(valor_data)
+    try:
+        meses_int = int(meses)
+    except Exception:
+        meses_int = 1
+
+    if not data_base:
+        return None
+
+    indice_mes = data_base.year * 12 + (data_base.month - 1) + meses_int
+    ano = indice_mes // 12
+    mes = indice_mes % 12 + 1
+    dia = min(data_base.day, monthrange(ano, mes)[1])
+    return date(ano, mes, dia).isoformat()
+
+
 def _somar_dias(valor_data, dias):
     data_base = _valor_data(valor_data)
     try:
@@ -2007,6 +2043,13 @@ def salvar_servico_manutencao(payload):
     id_servico = servico.pop("id", None)
     existente = selecionar_um("manutencao_servicos", {"id": id_servico}) if id_servico else None
 
+    tipo_servico_efetivo = _valor_texto(
+        servico.get("tipo_servico") or (existente or {}).get("tipo_servico")
+    ).upper().replace(" ", "_")
+    # A própria API reconhece a preventiva, mesmo que um cliente antigo não
+    # envie explicitamente atualizarPreventiva.
+    atualizar_preventiva = atualizar_preventiva or tipo_servico_efetivo == "PREVENTIVA"
+
     if not _valor_texto(servico.get("status_servico")):
         servico["status_servico"] = (existente or {}).get("status_servico") or "FINALIZADO"
 
@@ -2067,7 +2110,16 @@ def salvar_servico_manutencao(payload):
         or servico.get("responsavel_execucao")
     )
     resultado = _valor_texto((salvo or {}).get("resultado_liberacao") or servico.get("resultado_liberacao")).upper()
+    status_servico_efetivo = _valor_texto(
+        (salvo or {}).get("status_servico") or servico.get("status_servico")
+    ).upper().replace(" ", "_")
     oficina_aberta = bool((salvo or {}).get("entrada_oficina")) and not bool((salvo or {}).get("saida_oficina"))
+    servico_concluido = status_servico_efetivo in [
+        "FINALIZADO",
+        "CONCLUIDO",
+        "CONCLUÍDO",
+        "FECHADO",
+    ] or _resultado_liberado(resultado)
 
     if oficina_aberta and codigo:
         atualizar(
@@ -2090,26 +2142,33 @@ def salvar_servico_manutencao(payload):
         if not abertas:
             liberar_maquina(codigo, id_filial)
 
-    if atualizar_preventiva and not oficina_aberta and codigo:
+    if atualizar_preventiva and servico_concluido and not oficina_aberta and codigo:
+        data_execucao = (salvo or {}).get("data_servico") or servico.get("data_servico") or agora_mysql()
+        data_preventiva = _valor_data(data_execucao) or datetime.now()
+        ultima_preventiva = data_preventiva.date().isoformat()
+        proxima_preventiva = _somar_meses(data_preventiva, 1)
         horimetro = (salvo or {}).get("horimetro_servico") or servico.get("horimetro_servico")
+
+        dados_maquina = {
+            "ultima_preventiva": ultima_preventiva,
+            "prox_preventiva": proxima_preventiva,
+            "ultima_manutencao": normalizar_data_mysql(data_execucao),
+        }
+
+        # O horímetro permanece como informação histórica/operacional, sem
+        # participar do cálculo do próximo vencimento.
         if horimetro is not None:
-            maquina = buscar_maquina_por_codigo(codigo, id_filial)
-            intervalo = (maquina or {}).get("intervalo_preventiva_horas")
-            try:
-                prox = float(horimetro) + float(intervalo or 0)
-            except Exception:
-                prox = (maquina or {}).get("prox_manutencao_hora")
-            atualizar(
-                "maquinas",
-                {
-                    "horimetro_atual": horimetro,
-                    "ultimo_reg_horimetro": agora_mysql(),
-                    "horimetro_manutencao": horimetro,
-                    "ultima_manutencao": (salvo or {}).get("data_servico") or agora_mysql(),
-                    "prox_manutencao_hora": prox,
-                },
-                {"codigo": codigo, **({"id_filial": id_filial} if possui_filial(id_filial) else {})},
-            )
+            dados_maquina.update({
+                "horimetro_atual": horimetro,
+                "ultimo_reg_horimetro": agora_mysql(),
+                "horimetro_manutencao": horimetro,
+            })
+
+        atualizar(
+            "maquinas",
+            dados_maquina,
+            {"codigo": codigo, **({"id_filial": id_filial} if possui_filial(id_filial) else {})},
+        )
 
     servico_final = selecionar_um("manutencao_servicos", {"id": id_servico})
     return _enriquecer_servicos_com_check_mecanica([servico_final])[0] if servico_final else servico_final
@@ -2969,16 +3028,12 @@ class handler(BaseHTTPRequestHandler):
             if acao == "liberarMaquina":
                 return responder(self, 200, {"sucesso": True, "dados": liberar_maquina(body.get("codigoMaquina", ""), body.get("idFilial", ""))})
 
-            if acao == "atualizarControlePreventivaMaquina":
+            if acao in ["atualizarControlePreventivaMaquina", "atualizarControlePreventivaMensal"]:
                 return responder(self, 200, {"sucesso": True, "dados": atualizar_controle_preventiva_maquina(
                     codigo_maquina=body.get("codigoMaquina", ""),
                     id_filial=body.get("idFilial", ""),
-                    horimetro_atual=body.get("horimetroAtual"),
-                    horimetro_manutencao=body.get("horimetroManutencao"),
-                    intervalo_preventiva_horas=body.get("intervaloPreventivaHoras"),
-                    proxima_manutencao_hora=body.get("proximaManutencaoHora"),
-                    ultimo_registro_horimetro=body.get("ultimoRegistroHorimetro"),
-                    ultima_manutencao=body.get("ultimaManutencao"),
+                    ultima_preventiva=body.get("ultimaPreventiva") or body.get("ultimaManutencao"),
+                    proxima_preventiva=body.get("proximaPreventiva"),
                 )})
 
             if acao == "finalizarTurno":
