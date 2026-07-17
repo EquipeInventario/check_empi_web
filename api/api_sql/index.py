@@ -1858,15 +1858,30 @@ def buscar_historico_preventivas(
     for row in rows:
         item = normalizar_linha_saida("preventivas", row)
         dias_calculados = _dias_ate_preventiva(item.get("data_prox_prev"))
+        # dias_prox_prev gravado na tabela é apenas o valor existente no
+        # momento do registro. Para qualquer alerta atual, sempre recalcula
+        # usando data_prox_prev e a data de hoje.
         item["dias_prox_prev_calculado"] = dias_calculados
-        status_calculado = _status_preventiva(item.get("status"))
-        if status_calculado not in _PREVENTIVA_STATUS_FECHADOS and dias_calculados is not None:
-            if dias_calculados < 0:
-                status_calculado = "VENCIDA"
-            elif dias_calculados <= 5 and status_calculado == "PROGRAMADA":
-                status_calculado = "PROXIMA"
-        item["status_calculado"] = status_calculado
-        item["alerta_5_dias"] = dias_calculados is not None and dias_calculados <= 5
+
+        if dias_calculados is None:
+            status_prazo = "SEM_PROGRAMACAO"
+        elif dias_calculados < 0:
+            status_prazo = "VENCIDA"
+        elif dias_calculados == 0:
+            status_prazo = "VENCE_HOJE"
+        elif dias_calculados <= 5:
+            status_prazo = "PROXIMA"
+        else:
+            status_prazo = "EM_DIA"
+
+        item["status_prazo"] = status_prazo
+        item["status_calculado"] = _status_preventiva(item.get("status"))
+        item["alerta_5_dias"] = (
+            dias_calculados is not None and 0 <= dias_calculados <= 5
+        )
+        item["preventiva_vencida"] = (
+            dias_calculados is not None and dias_calculados < 0
+        )
         saida.append(item)
     return saida
 
