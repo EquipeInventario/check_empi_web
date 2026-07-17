@@ -1789,7 +1789,23 @@ def buscar_historico_preventivas(
     data_fim="",
     limit=1000,
 ):
-    sql = """
+    """Busca os ciclos preventivos relacionados ao período informado.
+
+    Um ciclo pertence ao período quando a preventiva foi realizada no mês
+    (data_ultima_prev) ou quando a próxima preventiva foi programada para o
+    mês (data_prox_prev). A tabela preventivas não possui id_filial, por isso
+    a filial é resolvida de forma determinística pela máquina correspondente.
+    """
+    params = []
+    filtro_filial_join = ""
+    if possui_filial(id_filial):
+        # A filial precisa participar da escolha da máquina no próprio JOIN.
+        # Caso contrário, um código repetido em outra filial com ID maior
+        # poderia esconder o registro correto da filial solicitada.
+        filtro_filial_join = " AND m2.`id_filial` = %s"
+        params.append(id_filial)
+
+    sql = f"""
         SELECT
             p.*,
             m.`id_filial`,
@@ -1797,16 +1813,21 @@ def buscar_historico_preventivas(
             m.`tipo_maquina` AS `maquina_tipo`
         FROM `check_maquinas`.`preventivas` p
         LEFT JOIN `check_maquinas`.`maquinas` m
-          ON CONVERT(m.`codigo` USING utf8mb4) COLLATE utf8mb4_unicode_ci
-           = CONVERT(p.`codigo_maquina` USING utf8mb4) COLLATE utf8mb4_unicode_ci
-         AND (
-              p.`id_maquina` IS NULL
-              OR m.`id_maquina` = p.`id_maquina`
-              OR m.`id` = p.`id_maquina`
-         )
+          ON m.`id` = (
+              SELECT MAX(m2.`id`)
+              FROM `check_maquinas`.`maquinas` m2
+              WHERE CONVERT(m2.`codigo` USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                    = CONVERT(p.`codigo_maquina` USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                AND (
+                    p.`id_maquina` IS NULL
+                    OR p.`id_maquina` = 0
+                    OR m2.`id_maquina` = p.`id_maquina`
+                    OR m2.`id` = p.`id_maquina`
+                )
+                {filtro_filial_join}
+          )
         WHERE 1=1
     """
-    params = []
 
     if _valor_texto(codigo_maquina):
         sql += " AND p.`codigo_maquina` = %s"
@@ -1815,8 +1836,9 @@ def buscar_historico_preventivas(
         sql += " AND p.`id_maquina` = %s"
         params.append(id_maquina)
     if possui_filial(id_filial):
-        sql += " AND m.`id_filial` = %s"
-        params.append(id_filial)
+        # Garante que históricos sem uma máquina correspondente na filial não
+        # sejam misturados ao cronograma solicitado.
+        sql += " AND m.`id_filial` IS NOT NULL"
     if _valor_texto(status):
         sql += " AND UPPER(REPLACE(COALESCE(p.`status`, ''), ' ', '_')) = %s"
         params.append(_status_preventiva(status))
@@ -1847,7 +1869,13 @@ def buscar_historico_preventivas(
     except Exception:
         limit_int = 1000
     limit_int = max(1, min(limit_int, 5000))
-    sql += f" ORDER BY COALESCE(p.`data_ultima_prev`, p.`data_prox_prev`) DESC, p.`id` DESC LIMIT {limit_int}"
+    sql += f"""
+        ORDER BY GREATEST(
+            COALESCE(p.`data_ultima_prev`, '1000-01-01'),
+            COALESCE(p.`data_prox_prev`, '1000-01-01')
+        ) DESC, p.`id` DESC
+        LIMIT {limit_int}
+    """
 
     with conectar() as conn:
         with conn.cursor() as cur:
@@ -1855,12 +1883,22 @@ def buscar_historico_preventivas(
             rows = cur.fetchall()
 
     saida = []
+    ids_adicionados = set()
     for row in rows:
+        # Proteção adicional contra duplicidade de JOIN ou de resposta.
+        registro_id = row.get("id")
+        chave = f"id:{registro_id}" if registro_id not in [None, ""] else (
+            f"{row.get('codigo_maquina')}|{row.get('data_ultima_prev')}|"
+            f"{row.get('data_prox_prev')}|{row.get('status')}"
+        )
+        if chave in ids_adicionados:
+            continue
+        ids_adicionados.add(chave)
+
         item = normalizar_linha_saida("preventivas", row)
         dias_calculados = _dias_ate_preventiva(item.get("data_prox_prev"))
-        # dias_prox_prev gravado na tabela é apenas o valor existente no
-        # momento do registro. Para qualquer alerta atual, sempre recalcula
-        # usando data_prox_prev e a data de hoje.
+        # dias_prox_prev gravado na tabela é somente uma fotografia do dia em
+        # que o ciclo foi salvo. Alertas são sempre recalculados pela data.
         item["dias_prox_prev_calculado"] = dias_calculados
 
         if dias_calculados is None:
@@ -1882,6 +1920,19 @@ def buscar_historico_preventivas(
         item["preventiva_vencida"] = (
             dias_calculados is not None and dias_calculados < 0
         )
+        if inicio and fim:
+            item["ultima_no_periodo"] = bool(
+                _valor_data(item.get("data_ultima_prev"))
+                and inicio.date()
+                <= _valor_data(item.get("data_ultima_prev")).date()
+                <= fim.date()
+            )
+            item["proxima_no_periodo"] = bool(
+                _valor_data(item.get("data_prox_prev"))
+                and inicio.date()
+                <= _valor_data(item.get("data_prox_prev")).date()
+                <= fim.date()
+            )
         saida.append(item)
     return saida
 
