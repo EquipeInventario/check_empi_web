@@ -1797,9 +1797,13 @@ def buscar_historico_preventivas(
             m.`tipo_maquina` AS `maquina_tipo`
         FROM `check_maquinas`.`preventivas` p
         LEFT JOIN `check_maquinas`.`maquinas` m
-          ON m.`id_maquina` = p.`id_maquina`
-         AND CONVERT(m.`codigo` USING utf8mb4) COLLATE utf8mb4_unicode_ci
+          ON CONVERT(m.`codigo` USING utf8mb4) COLLATE utf8mb4_unicode_ci
            = CONVERT(p.`codigo_maquina` USING utf8mb4) COLLATE utf8mb4_unicode_ci
+         AND (
+              p.`id_maquina` IS NULL
+              OR m.`id_maquina` = p.`id_maquina`
+              OR m.`id` = p.`id_maquina`
+         )
         WHERE 1=1
     """
     params = []
@@ -1819,12 +1823,24 @@ def buscar_historico_preventivas(
 
     inicio = _valor_data(data_inicio)
     fim = _valor_data(data_fim)
-    if inicio:
-        sql += " AND COALESCE(p.`data_ultima_prev`, p.`data_prox_prev`) >= %s"
-        params.append(inicio.date().isoformat())
-    if fim:
-        sql += " AND COALESCE(p.`data_ultima_prev`, p.`data_prox_prev`) <= %s"
-        params.append(fim.date().isoformat())
+    if inicio and fim:
+        inicio_sql = inicio.date().isoformat()
+        fim_sql = fim.date().isoformat()
+        sql += """
+            AND (
+                (p.`data_ultima_prev` BETWEEN %s AND %s)
+                OR (p.`data_prox_prev` BETWEEN %s AND %s)
+            )
+        """
+        params.extend([inicio_sql, fim_sql, inicio_sql, fim_sql])
+    elif inicio:
+        inicio_sql = inicio.date().isoformat()
+        sql += " AND (p.`data_ultima_prev` >= %s OR p.`data_prox_prev` >= %s)"
+        params.extend([inicio_sql, inicio_sql])
+    elif fim:
+        fim_sql = fim.date().isoformat()
+        sql += " AND (p.`data_ultima_prev` <= %s OR p.`data_prox_prev` <= %s)"
+        params.extend([fim_sql, fim_sql])
 
     try:
         limit_int = int(limit or 1000)
@@ -2461,28 +2477,88 @@ def buscar_servicos_manutencao(
     id_check="",
     tipo_servico="",
     status_servico="",
+    data_inicio="",
+    data_fim="",
     limit=500,
 ):
-    filtros = {}
+    condicoes = []
+    params = []
+
     if possui_filial(id_filial):
-        filtros["id_filial"] = id_filial
+        condicoes.append("`id_filial` = %s")
+        params.append(id_filial)
     if _valor_texto(codigo_maquina):
-        filtros["codigo_maquina"] = _valor_texto(codigo_maquina)
+        condicoes.append("`codigo_maquina` = %s")
+        params.append(_valor_texto(codigo_maquina))
     if _valor_texto(id_pendencia):
-        filtros["id_pendencia"] = id_pendencia
+        condicoes.append("`id_pendencia` = %s")
+        params.append(id_pendencia)
     if _valor_texto(id_check):
-        filtros["id_check"] = id_check
+        condicoes.append("`id_check` = %s")
+        params.append(id_check)
     if _valor_texto(tipo_servico):
-        filtros["tipo_servico"] = tipo_servico
+        condicoes.append("`tipo_servico` = %s")
+        params.append(tipo_servico)
     if _valor_texto(status_servico):
-        filtros["status_servico"] = status_servico
-    servicos = selecionar(
-        "manutencao_servicos",
-        filtros=filtros,
-        order_by="data_servico",
-        ascending=False,
-        limit=limit or 500,
-    )
+        condicoes.append("`status_servico` = %s")
+        params.append(status_servico)
+
+    inicio = _valor_data(data_inicio)
+    fim = _valor_data(data_fim)
+    if inicio and fim:
+        from datetime import timedelta
+        inicio_sql = datetime(inicio.year, inicio.month, inicio.day)
+        fim_exclusivo = datetime(fim.year, fim.month, fim.day) + timedelta(days=1)
+        # Inclui registros cuja data principal pertence ao mês e também
+        # serviços de oficina que começaram antes, mas permaneceram abertos
+        # ou foram finalizados dentro do período selecionado.
+        condicoes.append("""
+            (
+                (
+                    COALESCE(`data_servico`, `entrada_oficina`, `saida_oficina`, `criado_em`) >= %s
+                    AND COALESCE(`data_servico`, `entrada_oficina`, `saida_oficina`, `criado_em`) < %s
+                )
+                OR (
+                    `entrada_oficina` IS NOT NULL
+                    AND `entrada_oficina` < %s
+                    AND (`saida_oficina` IS NULL OR `saida_oficina` >= %s)
+                )
+            )
+        """)
+        params.extend([inicio_sql, fim_exclusivo, fim_exclusivo, inicio_sql])
+    elif inicio:
+        condicoes.append(
+            "COALESCE(`data_servico`, `entrada_oficina`, `saida_oficina`, `criado_em`) >= %s"
+        )
+        params.append(inicio)
+    elif fim:
+        condicoes.append(
+            "COALESCE(`data_servico`, `entrada_oficina`, `saida_oficina`, `criado_em`) <= %s"
+        )
+        params.append(fim)
+
+    try:
+        limit_int = int(limit or 500)
+    except Exception:
+        limit_int = 500
+    limit_int = max(1, min(limit_int, 5000))
+
+    where_sql = " WHERE " + " AND ".join(condicoes) if condicoes else ""
+    sql = f"""
+        SELECT *
+        FROM `check_maquinas`.`manutencao_servicos`
+        {where_sql}
+        ORDER BY COALESCE(`data_servico`, `entrada_oficina`, `saida_oficina`, `criado_em`) DESC,
+                 `id` DESC
+        LIMIT {limit_int}
+    """
+
+    with conectar() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+
+    servicos = [normalizar_linha_saida("manutencao_servicos", row) for row in rows]
     return _enriquecer_servicos_com_check_mecanica(servicos)
 
 
@@ -2507,7 +2583,7 @@ def salvar_servico_manutencao(payload):
     ).upper().replace(" ", "_")
     # A própria API reconhece a preventiva, mesmo que um cliente antigo não
     # envie explicitamente atualizarPreventiva.
-    atualizar_preventiva = atualizar_preventiva or "PREVENTIVA" in tipo_servico_efetivo
+    atualizar_preventiva = atualizar_preventiva or "PREVENTIV" in tipo_servico_efetivo
 
     if not _valor_texto(servico.get("status_servico")):
         servico["status_servico"] = (existente or {}).get("status_servico") or "FINALIZADO"
@@ -3254,6 +3330,8 @@ class handler(BaseHTTPRequestHandler):
                     id_check=query_param(query, "idCheck", ""),
                     tipo_servico=query_param(query, "tipoServico", ""),
                     status_servico=query_param(query, "statusServico", ""),
+                    data_inicio=query_param(query, "dataInicio", ""),
+                    data_fim=query_param(query, "dataFim", ""),
                     limit=query_param(query, "limit", "500"),
                 )})
 
