@@ -58,6 +58,27 @@ TABLES = {
         "bool_columns": ["adaptada_bobina", "possui_gdi"],
         "json_columns": [],
     },
+    "preventivas": {
+        "schema": "check_maquinas",
+        "table": "preventivas",
+        "pk": "id",
+        "columns": [
+            "id",
+            "id_maquina",
+            "codigo_maquina",
+            "data_ultima_prev",
+            "dias_prox_prev",
+            "data_prox_prev",
+            "descricao",
+            "id_pecas",
+            "pecas",
+            "status",
+            "responsavel",
+            "observacao",
+        ],
+        "bool_columns": [],
+        "json_columns": [],
+    },
     "usuarios_web_check": {
         "schema": "check_maquinas",
         "table": "usuarios_web_check",
@@ -644,9 +665,30 @@ def normalizar_data_mysql(valor):
         if isinstance(valor, date) and not isinstance(valor, datetime):
             return valor.strftime("%Y-%m-%d")
         return valor.strftime("%Y-%m-%d %H:%M:%S")
+
     texto = str(valor).strip()
     if not texto:
         return texto
+
+    # A interface usa o padrão brasileiro e a API converte antes do MySQL.
+    br_data_hora = re.match(
+        r"^(\d{2})/(\d{2})/(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?$",
+        texto,
+    )
+    if br_data_hora:
+        dia, mes, ano, hora, minuto, segundo = br_data_hora.groups()
+        segundo = segundo or "00"
+        data_validada = datetime(
+            int(ano), int(mes), int(dia), int(hora), int(minuto), int(segundo)
+        )
+        return data_validada.strftime("%Y-%m-%d %H:%M:%S")
+
+    br_data = re.match(r"^(\d{2})/(\d{2})/(\d{4})$", texto)
+    if br_data:
+        dia, mes, ano = br_data.groups()
+        data_validada = date(int(ano), int(mes), int(dia))
+        return data_validada.strftime("%Y-%m-%d")
+
     texto = texto.replace("T", " ")
     if texto.endswith("Z"):
         texto = texto[:-1]
@@ -1190,7 +1232,22 @@ def atualizar_controle_preventiva_maquina(
     if possui_filial(id_filial):
         filtros["id_filial"] = id_filial
 
-    return atualizar("maquinas", dados, filtros)
+    resultado = atualizar("maquinas", dados, filtros)
+
+    maquina = _buscar_maquina_para_preventiva(codigo, id_filial=id_filial)
+    dias = _dias_ate_preventiva(proxima)
+    status = "VENCIDA" if dias is not None and dias < 0 else "PROGRAMADA"
+    salvar_historico_preventiva({
+        "id_maquina": (maquina or {}).get("id_maquina") or (maquina or {}).get("id"),
+        "codigo_maquina": codigo,
+        "data_ultima_prev": ultima.date().isoformat() if ultima else (maquina or {}).get("ultima_preventiva"),
+        "data_prox_prev": proxima.date().isoformat() if proxima else (maquina or {}).get("prox_preventiva"),
+        "dias_prox_prev": dias,
+        "descricao": "Programação preventiva mensal",
+        "status": status,
+    })
+
+    return resultado
 
 
 def finalizar_turno(
@@ -1445,6 +1502,408 @@ def _valor_data(valor):
             continue
     return None
 
+
+
+
+# ============================================================
+# HISTÓRICO DE PREVENTIVAS
+# ============================================================
+
+_PREVENTIVA_STATUS_FECHADOS = {
+    "CONCLUIDA",
+    "CONCLUÍDA",
+    "FINALIZADA",
+    "FINALIZADO",
+    "CORRIGIDA",
+    "CORRIGIDO",
+    "CANCELADA",
+    "CANCELADO",
+}
+
+
+def _texto_preventiva(valor, limite=45):
+    texto = _valor_texto(valor)
+    if not texto:
+        return None
+    return texto[:limite]
+
+
+def _status_preventiva(valor, padrao="PROGRAMADA"):
+    texto = _valor_texto(valor or padrao).upper().replace(" ", "_")
+    aliases = {
+        "EM_MANUTENÇÃO": "EM_MANUTENCAO",
+        "EM MANUTENÇÃO": "EM_MANUTENCAO",
+        "EM MANUTENCAO": "EM_MANUTENCAO",
+        "CONCLUÍDA": "CONCLUIDA",
+        "FINALIZADA": "CONCLUIDA",
+        "FINALIZADO": "CONCLUIDA",
+        "CORRIGIDA": "CONCLUIDA",
+        "CORRIGIDO": "CONCLUIDA",
+    }
+    return aliases.get(texto, texto or padrao)
+
+
+def _dias_ate_preventiva(valor_data):
+    data_prev = _valor_data(valor_data)
+    if not data_prev:
+        return None
+    return (data_prev.date() - datetime.now().date()).days
+
+
+def _buscar_maquina_para_preventiva(codigo_maquina, id_filial="", conn=None):
+    codigo = _valor_texto(codigo_maquina)
+    if not codigo:
+        return None
+
+    sql = """
+        SELECT *
+        FROM `check_maquinas`.`maquinas`
+        WHERE `codigo` = %s
+    """
+    params = [codigo]
+    if possui_filial(id_filial):
+        sql += " AND `id_filial` = %s"
+        params.append(id_filial)
+    sql += " ORDER BY `id` DESC LIMIT 1"
+
+    close_conn = False
+    if conn is None:
+        conn = conectar()
+        close_conn = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            row = cur.fetchone()
+        return normalizar_linha_saida("maquinas", row) if row else None
+    finally:
+        if close_conn:
+            conn.close()
+
+
+def _preventivas_id_auto_increment(conn):
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT `EXTRA`
+            FROM `information_schema`.`COLUMNS`
+            WHERE `TABLE_SCHEMA` = 'check_maquinas'
+              AND `TABLE_NAME` = 'preventivas'
+              AND `COLUMN_NAME` = 'id'
+            LIMIT 1
+            """
+        )
+        row = cur.fetchone() or {}
+    return "auto_increment" in _valor_texto(row.get("EXTRA")).lower()
+
+
+def _buscar_preventiva_por_id(id_registro, conn=None):
+    if id_registro in [None, ""]:
+        return None
+    close_conn = False
+    if conn is None:
+        conn = conectar()
+        close_conn = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM `check_maquinas`.`preventivas` WHERE `id` = %s LIMIT 1",
+                [id_registro],
+            )
+            row = cur.fetchone()
+        return normalizar_linha_saida("preventivas", row) if row else None
+    finally:
+        if close_conn:
+            conn.close()
+
+
+def _buscar_preventiva_aberta(codigo_maquina, id_maquina=None, conn=None):
+    codigo = _valor_texto(codigo_maquina)
+    if not codigo and id_maquina in [None, ""]:
+        return None
+
+    filtros = []
+    params = []
+    if codigo:
+        filtros.append("`codigo_maquina` = %s")
+        params.append(codigo)
+    if id_maquina not in [None, ""]:
+        filtros.append("`id_maquina` = %s")
+        params.append(id_maquina)
+
+    sql = f"""
+        SELECT *
+        FROM `check_maquinas`.`preventivas`
+        WHERE {' AND '.join(filtros)}
+          AND UPPER(REPLACE(COALESCE(`status`, ''), ' ', '_')) NOT IN (
+              'CONCLUIDA', 'CONCLUÍDA', 'FINALIZADA', 'FINALIZADO',
+              'CORRIGIDA', 'CORRIGIDO', 'CANCELADA', 'CANCELADO'
+          )
+        ORDER BY COALESCE(`data_prox_prev`, `data_ultima_prev`) DESC, `id` DESC
+        LIMIT 1
+    """
+
+    close_conn = False
+    if conn is None:
+        conn = conectar()
+        close_conn = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            row = cur.fetchone()
+        return normalizar_linha_saida("preventivas", row) if row else None
+    finally:
+        if close_conn:
+            conn.close()
+
+
+def _inserir_preventiva(dados, conn=None):
+    close_conn = False
+    if conn is None:
+        conn = conectar()
+        close_conn = True
+
+    try:
+        dados_filtrados = filtrar_dados("preventivas", dados, permitir_id=True)
+        if not dados_filtrados:
+            raise ValueError("Nenhum campo válido enviado para o histórico de preventivas.")
+
+        if dados_filtrados.get("id") in [None, ""]:
+            dados_filtrados.pop("id", None)
+            if not _preventivas_id_auto_increment(conn):
+                # Compatibilidade com a tabela criada com PK sem AUTO_INCREMENT.
+                # Em um próximo ajuste, o ideal é alterar id para AUTO_INCREMENT.
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT COALESCE(MAX(`id`), 0) + 1 AS `proximo_id` FROM `check_maquinas`.`preventivas`"
+                    )
+                    row = cur.fetchone() or {}
+                dados_filtrados["id"] = int(row.get("proximo_id") or 1)
+
+        colunas = list(dados_filtrados.keys())
+        valores = [dados_filtrados[c] for c in colunas]
+        colunas_sql = ", ".join([f"`{c}`" for c in colunas])
+        placeholders = ", ".join(["%s"] * len(colunas))
+        sql = f"INSERT INTO `check_maquinas`.`preventivas` ({colunas_sql}) VALUES ({placeholders})"
+
+        with conn.cursor() as cur:
+            cur.execute(sql, valores)
+            novo_id = dados_filtrados.get("id") or cur.lastrowid
+
+        if close_conn:
+            conn.commit()
+        return _buscar_preventiva_por_id(novo_id, conn=conn)
+    except Exception:
+        if close_conn:
+            conn.rollback()
+        raise
+    finally:
+        if close_conn:
+            conn.close()
+
+
+def salvar_historico_preventiva(payload, conn=None, atualizar_aberta=True):
+    dados = dict(
+        (payload or {}).get("preventiva")
+        or (payload or {}).get("dados")
+        or payload
+        or {}
+    )
+    id_registro = dados.pop("id", None)
+
+    codigo = _valor_texto(dados.get("codigo_maquina") or dados.get("codigoMaquina"))
+    id_filial = dados.pop("id_filial", None) or dados.pop("idFilial", None) or ""
+    id_maquina = dados.get("id_maquina") or dados.get("idMaquina")
+
+    maquina = _buscar_maquina_para_preventiva(codigo, id_filial=id_filial, conn=conn) if codigo else None
+    if maquina:
+        codigo = codigo or _valor_texto(maquina.get("codigo"))
+        id_maquina = id_maquina or maquina.get("id_maquina") or maquina.get("id")
+
+    if not codigo:
+        raise ValueError("Informe codigo_maquina para salvar o histórico da preventiva.")
+
+    ultima = _valor_data(dados.get("data_ultima_prev") or dados.get("ultimaPreventiva"))
+    proxima = _valor_data(dados.get("data_prox_prev") or dados.get("proximaPreventiva"))
+    if ultima and not proxima:
+        proxima = _valor_data(_somar_meses(ultima, 1))
+
+    status = _status_preventiva(dados.get("status"))
+    dias = dados.get("dias_prox_prev")
+    if dias in [None, ""]:
+        dias = _dias_ate_preventiva(proxima)
+    else:
+        try:
+            dias = int(dias)
+        except Exception:
+            dias = _dias_ate_preventiva(proxima)
+
+    registro = {
+        "id_maquina": id_maquina,
+        "codigo_maquina": _texto_preventiva(codigo),
+        "data_ultima_prev": ultima.date().isoformat() if ultima else None,
+        "dias_prox_prev": dias,
+        "data_prox_prev": proxima.date().isoformat() if proxima else None,
+        "descricao": _texto_preventiva(dados.get("descricao")),
+        "id_pecas": dados.get("id_pecas") or dados.get("idPecas"),
+        "pecas": _texto_preventiva(dados.get("pecas")),
+        "status": _texto_preventiva(status),
+        "responsavel": _texto_preventiva(dados.get("responsavel")),
+        "observacao": _texto_preventiva(dados.get("observacao")),
+    }
+    registro = {k: v for k, v in registro.items() if v is not None}
+
+    close_conn = False
+    if conn is None:
+        conn = conectar()
+        close_conn = True
+
+    try:
+        existente = _buscar_preventiva_por_id(id_registro, conn=conn) if id_registro else None
+        if not existente and atualizar_aberta:
+            existente = _buscar_preventiva_aberta(codigo, id_maquina=id_maquina, conn=conn)
+
+        if existente:
+            atualizar("preventivas", registro, {"id": existente.get("id")}, conn=conn)
+            salvo = _buscar_preventiva_por_id(existente.get("id"), conn=conn)
+        else:
+            salvo = _inserir_preventiva(registro, conn=conn)
+
+        if close_conn:
+            conn.commit()
+        return salvo
+    except Exception:
+        if close_conn:
+            conn.rollback()
+        raise
+    finally:
+        if close_conn:
+            conn.close()
+
+
+def buscar_historico_preventivas(
+    codigo_maquina="",
+    id_maquina="",
+    id_filial="",
+    status="",
+    data_inicio="",
+    data_fim="",
+    limit=1000,
+):
+    sql = """
+        SELECT
+            p.*,
+            m.`id_filial`,
+            m.`descricao` AS `maquina_descricao`,
+            m.`tipo_maquina` AS `maquina_tipo`
+        FROM `check_maquinas`.`preventivas` p
+        LEFT JOIN `check_maquinas`.`maquinas` m
+          ON m.`id_maquina` = p.`id_maquina`
+         AND CONVERT(m.`codigo` USING utf8mb4) COLLATE utf8mb4_unicode_ci
+           = CONVERT(p.`codigo_maquina` USING utf8mb4) COLLATE utf8mb4_unicode_ci
+        WHERE 1=1
+    """
+    params = []
+
+    if _valor_texto(codigo_maquina):
+        sql += " AND p.`codigo_maquina` = %s"
+        params.append(_valor_texto(codigo_maquina))
+    if _valor_texto(id_maquina):
+        sql += " AND p.`id_maquina` = %s"
+        params.append(id_maquina)
+    if possui_filial(id_filial):
+        sql += " AND m.`id_filial` = %s"
+        params.append(id_filial)
+    if _valor_texto(status):
+        sql += " AND UPPER(REPLACE(COALESCE(p.`status`, ''), ' ', '_')) = %s"
+        params.append(_status_preventiva(status))
+
+    inicio = _valor_data(data_inicio)
+    fim = _valor_data(data_fim)
+    if inicio:
+        sql += " AND COALESCE(p.`data_ultima_prev`, p.`data_prox_prev`) >= %s"
+        params.append(inicio.date().isoformat())
+    if fim:
+        sql += " AND COALESCE(p.`data_ultima_prev`, p.`data_prox_prev`) <= %s"
+        params.append(fim.date().isoformat())
+
+    try:
+        limit_int = int(limit or 1000)
+    except Exception:
+        limit_int = 1000
+    limit_int = max(1, min(limit_int, 5000))
+    sql += f" ORDER BY COALESCE(p.`data_ultima_prev`, p.`data_prox_prev`) DESC, p.`id` DESC LIMIT {limit_int}"
+
+    with conectar() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+
+    saida = []
+    for row in rows:
+        item = normalizar_linha_saida("preventivas", row)
+        dias_calculados = _dias_ate_preventiva(item.get("data_prox_prev"))
+        item["dias_prox_prev_calculado"] = dias_calculados
+        status_calculado = _status_preventiva(item.get("status"))
+        if status_calculado not in _PREVENTIVA_STATUS_FECHADOS and dias_calculados is not None:
+            if dias_calculados < 0:
+                status_calculado = "VENCIDA"
+            elif dias_calculados <= 5 and status_calculado == "PROGRAMADA":
+                status_calculado = "PROXIMA"
+        item["status_calculado"] = status_calculado
+        item["alerta_5_dias"] = dias_calculados is not None and dias_calculados <= 5
+        saida.append(item)
+    return saida
+
+
+def anexar_peca_historico_preventiva(codigo_maquina, id_maquina, id_peca, nome_peca, observacao=""):
+    codigo = _valor_texto(codigo_maquina)
+    if not codigo:
+        return None
+
+    with conectar() as conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT *
+                    FROM `check_maquinas`.`preventivas`
+                    WHERE (`codigo_maquina` = %s OR `id_maquina` = %s)
+                    ORDER BY
+                        COALESCE(`data_ultima_prev`, `data_prox_prev`) DESC,
+                        CASE
+                            WHEN UPPER(REPLACE(COALESCE(`status`, ''), ' ', '_')) IN ('EM_MANUTENCAO', 'EM_ANDAMENTO') THEN 0
+                            WHEN UPPER(REPLACE(COALESCE(`status`, ''), ' ', '_')) IN ('CONCLUIDA', 'FINALIZADA', 'FINALIZADO') THEN 1
+                            ELSE 2
+                        END,
+                        `id` DESC
+                    LIMIT 1
+                    """,
+                    [codigo, id_maquina],
+                )
+                registro = cur.fetchone()
+
+            if not registro:
+                return None
+
+            nomes = [p.strip() for p in _valor_texto(registro.get("pecas")).split(",") if p.strip()]
+            nome = _valor_texto(nome_peca)
+            if nome and nome not in nomes:
+                nomes.append(nome)
+
+            dados = {
+                "pecas": _texto_preventiva(", ".join(nomes)),
+            }
+            if registro.get("id_pecas") in [None, ""] and id_peca not in [None, ""]:
+                dados["id_pecas"] = id_peca
+            if observacao and not _valor_texto(registro.get("observacao")):
+                dados["observacao"] = _texto_preventiva(observacao)
+
+            atualizar("preventivas", dados, {"id": registro.get("id")}, conn=conn)
+            conn.commit()
+            return _buscar_preventiva_por_id(registro.get("id"), conn=conn)
+        except Exception:
+            conn.rollback()
+            raise
 
 
 def _status_oficina_aberto(status):
@@ -2048,7 +2507,7 @@ def salvar_servico_manutencao(payload):
     ).upper().replace(" ", "_")
     # A própria API reconhece a preventiva, mesmo que um cliente antigo não
     # envie explicitamente atualizarPreventiva.
-    atualizar_preventiva = atualizar_preventiva or tipo_servico_efetivo == "PREVENTIVA"
+    atualizar_preventiva = atualizar_preventiva or "PREVENTIVA" in tipo_servico_efetivo
 
     if not _valor_texto(servico.get("status_servico")):
         servico["status_servico"] = (existente or {}).get("status_servico") or "FINALIZADO"
@@ -2128,6 +2587,19 @@ def salvar_servico_manutencao(payload):
             {"codigo": codigo, **({"id_filial": id_filial} if possui_filial(id_filial) else {})},
         )
 
+    if atualizar_preventiva and codigo and not servico_concluido:
+        maquina_preventiva = _buscar_maquina_para_preventiva(codigo, id_filial=id_filial) or {}
+        salvar_historico_preventiva({
+            "id_maquina": maquina_preventiva.get("id_maquina") or maquina_preventiva.get("id"),
+            "codigo_maquina": codigo,
+            "data_ultima_prev": maquina_preventiva.get("ultima_preventiva"),
+            "data_prox_prev": maquina_preventiva.get("prox_preventiva"),
+            "descricao": (salvo or {}).get("descricao_servico") or servico.get("descricao_servico"),
+            "status": "EM_MANUTENCAO" if oficina_aberta else "EM_ANDAMENTO",
+            "responsavel": responsavel,
+            "observacao": (salvo or {}).get("observacao_liberacao") or servico.get("observacao_liberacao"),
+        })
+
     if resolver_pend and not oficina_aberta and id_pendencia and responsavel:
         resolver_pendencia(
             id_pendencia,
@@ -2169,6 +2641,19 @@ def salvar_servico_manutencao(payload):
             dados_maquina,
             {"codigo": codigo, **({"id_filial": id_filial} if possui_filial(id_filial) else {})},
         )
+
+        maquina_preventiva = _buscar_maquina_para_preventiva(codigo, id_filial=id_filial) or {}
+        salvar_historico_preventiva({
+            "id_maquina": maquina_preventiva.get("id_maquina") or maquina_preventiva.get("id"),
+            "codigo_maquina": codigo,
+            "data_ultima_prev": ultima_preventiva,
+            "data_prox_prev": proxima_preventiva,
+            "dias_prox_prev": _dias_ate_preventiva(proxima_preventiva),
+            "descricao": (salvo or {}).get("descricao_servico") or servico.get("descricao_servico"),
+            "status": "CONCLUIDA",
+            "responsavel": responsavel,
+            "observacao": (salvo or {}).get("observacao_liberacao") or servico.get("observacao_liberacao"),
+        })
 
     servico_final = selecionar_um("manutencao_servicos", {"id": id_servico})
     return _enriquecer_servicos_com_check_mecanica([servico_final])[0] if servico_final else servico_final
@@ -2447,8 +2932,19 @@ def registrar_troca_peca(payload):
 
     atualizar("manutencao_maquina_pecas", atualizacao, {"id": id_maquina_peca})
 
+    registro_peca = buscar_peca_da_maquina_por_id(id_maquina_peca)
+    motivo_normalizado = _valor_texto(motivo_troca).upper().replace(" ", "_")
+    if "PREVENTIVA" in motivo_normalizado and registro_peca:
+        anexar_peca_historico_preventiva(
+            codigo_maquina=registro_peca.get("codigo_maquina"),
+            id_maquina=registro_peca.get("id_maquina"),
+            id_peca=registro_peca.get("id_peca"),
+            nome_peca=registro_peca.get("peca_descricao") or registro_peca.get("codigo_peca"),
+            observacao=atualizacao.get("observacao") or "",
+        )
+
     return {
-        "maquinaPeca": buscar_peca_da_maquina_por_id(id_maquina_peca),
+        "maquinaPeca": registro_peca,
     }
 
 
@@ -2619,6 +3115,11 @@ def carregar_plano_manutencao_maquina(codigo_maquina, id_filial=""):
         "checks": checks,
         "pendencias": buscar_pendencias_da_maquina(codigo, id_filial=id_filial),
         "servicos": buscar_servicos_manutencao(id_filial=id_filial, codigo_maquina=codigo, limit=200),
+        "historicoPreventivas": buscar_historico_preventivas(
+            codigo_maquina=codigo,
+            id_filial=id_filial,
+            limit=500,
+        ),
         "checksMecanica": buscar_checks_mecanica(codigo_maquina=codigo, id_filial=id_filial, limit=200),
         "pecas": pecas,
         "trocasPecas": [],
@@ -2732,6 +3233,17 @@ class handler(BaseHTTPRequestHandler):
                 return responder(self, 200, {"sucesso": True, "dados": buscar_servico_oficina_aberto(
                     query_param(query, "codigoMaquina", ""),
                     query_param(query, "idFilial", ""),
+                )})
+
+            if acao == "buscarHistoricoPreventivas":
+                return responder(self, 200, {"sucesso": True, "dados": buscar_historico_preventivas(
+                    codigo_maquina=query_param(query, "codigoMaquina", ""),
+                    id_maquina=query_param(query, "idMaquina", ""),
+                    id_filial=query_param(query, "idFilial", ""),
+                    status=query_param(query, "status", ""),
+                    data_inicio=query_param(query, "dataInicio", ""),
+                    data_fim=query_param(query, "dataFim", ""),
+                    limit=query_param(query, "limit", "1000"),
                 )})
 
             if acao == "buscarServicosManutencao":
@@ -2908,6 +3420,12 @@ class handler(BaseHTTPRequestHandler):
                     ),
                 })
 
+
+            if acao == "salvarHistoricoPreventiva":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": salvar_historico_preventiva(body.get("dados", body)),
+                })
 
             if acao == "salvarServicoManutencao":
                 return responder(self, 200, {
