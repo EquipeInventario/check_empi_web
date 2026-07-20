@@ -1,6 +1,7 @@
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
+from zoneinfo import ZoneInfo
 from calendar import monthrange
 from decimal import Decimal
 import json
@@ -631,8 +632,21 @@ def conectar():
     )
 
 
+try:
+    FUSO_OPERACIONAL = ZoneInfo("America/Sao_Paulo")
+except Exception:
+    # Fallback seguro para o fuso atual de Brasília caso o ambiente
+    # serverless não possua a base IANA de fusos instalada.
+    FUSO_OPERACIONAL = timezone(timedelta(hours=-3))
+
+
+def agora_local():
+    """Retorna o horário operacional de São Paulo sem tzinfo para MySQL DATETIME."""
+    return datetime.now(FUSO_OPERACIONAL).replace(tzinfo=None)
+
+
 def agora_mysql():
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return agora_local().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def possui_filial(id_filial):
@@ -1547,7 +1561,7 @@ def _dias_ate_preventiva(valor_data):
     data_prev = _valor_data(valor_data)
     if not data_prev:
         return None
-    return (data_prev.date() - datetime.now().date()).days
+    return (data_prev.date() - agora_local().date()).days
 
 
 def _buscar_maquina_para_preventiva(codigo_maquina, id_filial="", conn=None):
@@ -2081,7 +2095,7 @@ def _enriquecer_tempo_oficina(servico):
     entrada = item.get("entrada_oficina")
     saida = item.get("saida_oficina")
     aberto = bool(entrada) and not bool(saida) and _status_oficina_aberto(item.get("status_servico"))
-    fim = datetime.now() if aberto else _valor_data(saida)
+    fim = agora_local() if aberto else _valor_data(saida)
     minutos, dias = _calcular_tempo_oficina(entrada, fim)
     item["oficina_aberta"] = aberto
     if minutos is not None:
@@ -2163,6 +2177,22 @@ def finalizar_manutencao_oficina(payload):
 
     if not _valor_texto(dados.get("resultado_liberacao")):
         raise ValueError("Informe o resultado da liberação para finalizar a oficina.")
+
+    if _resultado_liberado(dados.get("resultado_liberacao")):
+        if not _valor_texto(servico.get("saida_oficina")):
+            raise ValueError(
+                "Informe saida_oficina com a data e hora real da liberação. "
+                "O backend não gera mais automaticamente esse horário."
+            )
+
+        entrada_validacao = _valor_data(
+            servico.get("entrada_oficina") or existente.get("entrada_oficina")
+        )
+        saida_validacao = _valor_data(servico.get("saida_oficina"))
+        if entrada_validacao and saida_validacao and saida_validacao < entrada_validacao:
+            raise ValueError(
+                "A saída da oficina não pode ser anterior à entrada da oficina."
+            )
 
     return salvar_servico_manutencao({
         "servico": dados,
@@ -2758,7 +2788,7 @@ def salvar_servico_manutencao(payload):
 
     if atualizar_preventiva and servico_concluido and not oficina_aberta and codigo:
         data_execucao = (salvo or {}).get("data_servico") or servico.get("data_servico") or agora_mysql()
-        data_preventiva = _valor_data(data_execucao) or datetime.now()
+        data_preventiva = _valor_data(data_execucao) or agora_local()
         ultima_preventiva = data_preventiva.date().isoformat()
         proxima_preventiva = _somar_meses(data_preventiva, 1)
         horimetro = (salvo or {}).get("horimetro_servico") or servico.get("horimetro_servico")
@@ -2863,7 +2893,7 @@ def salvar_peca_manutencao(payload):
 
     # Para inserir, precisamos de um valor temporário único porque codigo_peca pode estar NOT NULL/UNIQUE.
     # Depois do INSERT, atualizamos codigo_peca com o id gerado pelo AUTO_INCREMENT.
-    temp_codigo = "TEMP_" + datetime.now().strftime("%Y%m%d%H%M%S%f")
+    temp_codigo = "TEMP_" + agora_local().strftime("%Y%m%d%H%M%S%f")
     dados["codigo_peca"] = temp_codigo
 
     with conectar() as conn:
@@ -2893,7 +2923,7 @@ def _linha_peca_maquina_com_status(linha, horimetro_atual=None):
 
     prox_data = _valor_data(saida.get("proxima_troca_data"))
     if prox_data:
-        hoje = datetime.now()
+        hoje = agora_local()
         dias_restantes = (prox_data.date() - hoje.date()).days
         saida["dias_restantes_troca"] = dias_restantes
         try:
