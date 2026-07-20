@@ -3251,12 +3251,46 @@ def carregar_plano_manutencao_maquina(codigo_maquina, id_filial=""):
         acoes.extend(buscar_acoes_nr12(id_apreciacao=id_ap, limit=500))
 
     pecas = buscar_pecas_da_maquina(codigo_maquina=codigo, id_filial=id_filial)
+    servicos = buscar_servicos_manutencao(
+        id_filial=id_filial,
+        codigo_maquina=codigo,
+        limit=200,
+    )
+
+    # Anexos documentais podem estar ligados diretamente à máquina OU ao
+    # manutencao_servicos.id. As fotos de liberação usam a segunda forma.
+    anexos_manutencao = []
+    if maquina:
+        anexos_manutencao.extend(
+            buscar_anexos_manutencao("maquinas", maquina.get("id", ""))
+        )
+
+    ids_servicos = [s.get("id") for s in servicos if s.get("id") is not None]
+    if ids_servicos:
+        placeholders = ",".join(["%s"] * len(ids_servicos))
+        sql_anexos_servicos = f"""
+            SELECT *
+            FROM `check_maquinas`.`manutencao_anexos`
+            WHERE `origem_tabela` = 'manutencao_servicos'
+              AND `origem_id` IN ({placeholders})
+            ORDER BY `criado_em` DESC
+            LIMIT 1000
+        """
+        with conectar() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql_anexos_servicos, ids_servicos)
+                anexos_manutencao.extend(
+                    [
+                        normalizar_linha_saida("manutencao_anexos", r)
+                        for r in cur.fetchall()
+                    ]
+                )
 
     return {
         "maquina": maquina,
         "checks": checks,
         "pendencias": buscar_pendencias_da_maquina(codigo, id_filial=id_filial),
-        "servicos": buscar_servicos_manutencao(id_filial=id_filial, codigo_maquina=codigo, limit=200),
+        "servicos": servicos,
         "historicoPreventivas": buscar_historico_preventivas(
             codigo_maquina=codigo,
             id_filial=id_filial,
@@ -3272,7 +3306,7 @@ def carregar_plano_manutencao_maquina(codigo_maquina, id_filial=""):
             tipo_maquina=(maquina or {}).get("tipo_maquina", ""),
             status="ATIVO",
         ),
-        "anexosManutencao": buscar_anexos_manutencao("maquinas", (maquina or {}).get("id", "")) if maquina else [],
+        "anexosManutencao": anexos_manutencao,
     }
 
 
