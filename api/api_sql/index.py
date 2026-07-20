@@ -384,6 +384,180 @@ TABLES = {
         "bool_columns": [],
         "json_columns": [],
     },
+    "check_mecanica_lavadora": {
+        "schema": "check_maquinas",
+        "table": "check_mecanica_lavadora",
+        "pk": "id",
+        "columns": [
+            "id",
+            "id_servico",
+            "status_check",
+            "resultado_check",
+            "observacao_geral",
+            "exec_servico_executado",
+            "exec_servico_executado_obs",
+            "org_equipamento_limpo",
+            "org_equipamento_limpo_obs",
+            "seg_sem_vazamentos",
+            "seg_sem_vazamentos_obs",
+            "seg_freio_testado",
+            "seg_freio_testado_obs",
+            "ope_direcao_movimentacao",
+            "ope_direcao_movimentacao_obs",
+            "ope_comandos_principais",
+            "ope_comandos_principais_obs",
+            "seg_dispositivos_seguranca",
+            "seg_dispositivos_seguranca_obs",
+            "seg_protecoes_tampas",
+            "seg_protecoes_tampas_obs",
+            "seg_condicoes_liberacao",
+            "seg_condicoes_liberacao_obs",
+            "ris_risco_residual",
+            "ris_risco_residual_obs",
+            "lib_condicao_segura",
+            "lib_condicao_segura_obs",
+            "lav_escovas_discos_verificados",
+            "lav_escovas_discos_verificados_obs",
+            "lav_rodo_succao_verificado",
+            "lav_rodo_succao_verificado_obs",
+            "lav_sistema_aspiracao_testado",
+            "lav_sistema_aspiracao_testado_obs",
+            "lav_tanque_agua_limpa_verificado",
+            "lav_tanque_agua_limpa_verificado_obs",
+            "lav_tanque_recuperacao_verificado",
+            "lav_tanque_recuperacao_verificado_obs",
+            "lav_mangueiras_conexoes_verificadas",
+            "lav_mangueiras_conexoes_verificadas_obs",
+            "lav_sistema_dosagem_verificado",
+            "lav_sistema_dosagem_verificado_obs",
+            "lav_bateria_cabos_conectores_verificados",
+            "lav_bateria_cabos_conectores_verificados_obs",
+            "lav_carregador_bateria_verificado",
+            "lav_carregador_bateria_verificado_obs",
+            "lav_rodas_pneus_verificados",
+            "lav_rodas_pneus_verificados_obs",
+            "lav_tracao_freio_testados",
+            "lav_tracao_freio_testados_obs",
+            "lav_sinalizacao_alarme_re_testados",
+            "lav_sinalizacao_alarme_re_testados_obs",
+            "lav_elevacao_escova_rodo_testada",
+            "lav_elevacao_escova_rodo_testada_obs",
+            "criado_em",
+            "atualizado_em",
+        ],
+        "bool_columns": [],
+        "json_columns": [],
+    },
+    "check_mecanica_paleteira": {
+        "schema": "check_maquinas",
+        "table": "check_mecanica_paleteira",
+        "pk": "id",
+        "columns": [
+            "id",
+            "id_servico",
+            "status_check",
+            "resultado_check",
+            "observacao_geral",
+            "exec_servico_executado",
+            "exec_servico_executado_obs",
+            "org_equipamento_limpo",
+            "org_equipamento_limpo_obs",
+            "seg_sem_vazamentos",
+            "seg_sem_vazamentos_obs",
+            "seg_condicoes_liberacao",
+            "seg_condicoes_liberacao_obs",
+            "ris_risco_residual",
+            "ris_risco_residual_obs",
+            "lib_condicao_segura",
+            "lib_condicao_segura_obs",
+            "pal_timao_testado",
+            "pal_timao_testado_obs",
+            "pal_garfos_estrutura_verificados",
+            "pal_garfos_estrutura_verificados_obs",
+            "pal_rodas_carga_verificadas",
+            "pal_rodas_carga_verificadas_obs",
+            "pal_rodas_direcionais_verificadas",
+            "pal_rodas_direcionais_verificadas_obs",
+            "pal_sistema_elevacao_testado",
+            "pal_sistema_elevacao_testado_obs",
+            "pal_sistema_descida_testado",
+            "pal_sistema_descida_testado_obs",
+            "pal_bomba_hidraulica_verificada",
+            "pal_bomba_hidraulica_verificada_obs",
+            "pal_valvula_descida_verificada",
+            "pal_valvula_descida_verificada_obs",
+            "pal_identificacao_capacidade_legivel",
+            "pal_identificacao_capacidade_legivel_obs",
+            "criado_em",
+            "atualizado_em",
+        ],
+        "bool_columns": [],
+        "json_columns": [],
+    },
+    "check_mecanica_transpaleteira": {
+        "schema": "check_maquinas",
+        "table": "check_mecanica_transpaleteira",
+        "pk": "id",
+        "columns": [
+            "id",
+            "id_servico",
+            "status_check",
+            "resultado_check",
+            "observacao_geral",
+            "exec_servico_executado",
+            "exec_servico_executado_obs",
+            "org_equipamento_limpo",
+            "org_equipamento_limpo_obs",
+            "seg_sem_vazamentos",
+            "seg_sem_vazamentos_obs",
+            "seg_freio_testado",
+            "seg_freio_testado_obs",
+            "ope_direcao_movimentacao",
+            "ope_direcao_movimentacao_obs",
+            "ope_comandos_principais",
+            "ope_comandos_principais_obs",
+            "seg_dispositivos_seguranca",
+            "seg_dispositivos_seguranca_obs",
+            "seg_protecoes_tampas",
+            "seg_protecoes_tampas_obs",
+            "seg_condicoes_liberacao",
+            "seg_condicoes_liberacao_obs",
+            "ris_risco_residual",
+            "ris_risco_residual_obs",
+            "lib_condicao_segura",
+            "lib_condicao_segura_obs",
+            "tra_timao_comandos_testados",
+            "tra_timao_comandos_testados_obs",
+            "tra_botao_emergencia_testado",
+            "tra_botao_emergencia_testado_obs",
+            "tra_botao_antiesmagamento_testado",
+            "tra_botao_antiesmagamento_testado_obs",
+            "tra_buzina_testada",
+            "tra_buzina_testada_obs",
+            "tra_freio_servico_estacionamento_testado",
+            "tra_freio_servico_estacionamento_testado_obs",
+            "tra_rodas_carga_verificadas",
+            "tra_rodas_carga_verificadas_obs",
+            "tra_roda_tracao_verificada",
+            "tra_roda_tracao_verificada_obs",
+            "tra_garfos_estrutura_verificados",
+            "tra_garfos_estrutura_verificados_obs",
+            "tra_sistema_elevacao_testado",
+            "tra_sistema_elevacao_testado_obs",
+            "tra_sistema_descida_testado",
+            "tra_sistema_descida_testado_obs",
+            "tra_bateria_cabos_conectores_verificados",
+            "tra_bateria_cabos_conectores_verificados_obs",
+            "tra_carregador_bateria_verificado",
+            "tra_carregador_bateria_verificado_obs",
+            "tra_indicador_carga_painel_testado",
+            "tra_indicador_carga_painel_testado_obs",
+            "criado_em",
+            "atualizado_em",
+        ],
+        "bool_columns": [],
+        "json_columns": [],
+    },
     "nr12_apreciacoes": {
         "schema": "check_maquinas",
         "table": "nr12_apreciacoes",
@@ -872,6 +1046,9 @@ def inserir(nome_tabela, dados, conn=None):
         "manutencao_pecas",
         "manutencao_maquina_pecas",
         "check_mecanica",
+        "check_mecanica_lavadora",
+        "check_mecanica_paleteira",
+        "check_mecanica_transpaleteira",
         "nr12_apreciacoes",
         "nr12_acoes",
         "manutencao_procedimentos_emergencia",
@@ -2341,7 +2518,17 @@ def buscar_operador_por_matricula(matricula):
 
 
 
-CHECK_MECANICA_CAMPOS = [
+
+# ============================================================
+# CHECKLIST TÉCNICO DE LIBERAÇÃO POR TIPO DE EQUIPAMENTO
+#
+# EMPILHADEIRA              -> check_mecanica (legado atual)
+# LAVADORA DE PISO          -> check_mecanica_lavadora
+# PALETEIRA                  -> check_mecanica_paleteira
+# TRANSPALETEIRA ELÉTRICA   -> check_mecanica_transpaleteira
+# ============================================================
+
+CHECKLIST_COMUM_COMPLETO = [
     ("Serviço executado conforme descrição técnica", "exec_servico_executado", "exec_servico_executado_obs", "Execução", True),
     ("Equipamento limpo e sem ferramentas ou peças soltas", "org_equipamento_limpo", "org_equipamento_limpo_obs", "Organização", True),
     ("Ausência de vazamentos aparentes após intervenção", "seg_sem_vazamentos", "seg_sem_vazamentos_obs", "Segurança", True),
@@ -2353,6 +2540,18 @@ CHECK_MECANICA_CAMPOS = [
     ("Condições de segurança avaliadas antes da liberação", "seg_condicoes_liberacao", "seg_condicoes_liberacao_obs", "Segurança", True),
     ("Risco residual informado ao responsável", "ris_risco_residual", "ris_risco_residual_obs", "Risco", False),
     ("Equipamento em condição segura para operação", "lib_condicao_segura", "lib_condicao_segura_obs", "Liberação", True),
+]
+
+CHECKLIST_COMUM_PALETEIRA = [
+    ("Serviço executado conforme descrição técnica", "exec_servico_executado", "exec_servico_executado_obs", "Execução", True),
+    ("Equipamento limpo e sem ferramentas ou peças soltas", "org_equipamento_limpo", "org_equipamento_limpo_obs", "Organização", True),
+    ("Ausência de vazamentos aparentes após intervenção", "seg_sem_vazamentos", "seg_sem_vazamentos_obs", "Segurança", True),
+    ("Condições de segurança avaliadas antes da liberação", "seg_condicoes_liberacao", "seg_condicoes_liberacao_obs", "Segurança", True),
+    ("Risco residual informado ao responsável", "ris_risco_residual", "ris_risco_residual_obs", "Risco", False),
+    ("Equipamento em condição segura para operação", "lib_condicao_segura", "lib_condicao_segura_obs", "Liberação", True),
+]
+
+CHECK_MECANICA_EMPILHADEIRA_CAMPOS = CHECKLIST_COMUM_COMPLETO + [
     ("Torre testada", "emp_torre_testada", "emp_torre_testada_obs", "Empilhadeira", True),
     ("Correntes verificadas", "emp_correntes_verificadas", "emp_correntes_verificadas_obs", "Empilhadeira", True),
     ("Garfos verificados", "emp_garfos_verificados", "emp_garfos_verificados_obs", "Empilhadeira", True),
@@ -2362,17 +2561,70 @@ CHECK_MECANICA_CAMPOS = [
     ("Giroflex e sinalização testados", "emp_giroflex_sinalizacao_testados", "emp_giroflex_sinalizacao_testados_obs", "Empilhadeira", False),
     ("Cinto de segurança verificado", "emp_cinto_seguranca_verificado", "emp_cinto_seguranca_verificado_obs", "Empilhadeira", True),
     ("Espelhos e extintor verificados", "emp_espelhos_extintor_verificados", "emp_espelhos_extintor_verificados_obs", "Empilhadeira", False),
-    ("Timão testado", "pal_timao_testado", "pal_timao_testado_obs", "Paleteira / Transpaleteira", True),
-    ("Rodas de carga verificadas", "pal_rodas_carga_verificadas", "pal_rodas_carga_verificadas_obs", "Paleteira / Transpaleteira", False),
-    ("Rodas direcionais verificadas", "pal_rodas_direcionais_verificadas", "pal_rodas_direcionais_verificadas_obs", "Paleteira / Transpaleteira", False),
-    ("Sistema de elevação testado", "pal_sistema_elevacao_testado", "pal_sistema_elevacao_testado_obs", "Paleteira / Transpaleteira", True),
-    ("Sistema de descida testado", "pal_sistema_descida_testado", "pal_sistema_descida_testado_obs", "Paleteira / Transpaleteira", True),
-    ("Botão de emergência testado, se aplicável", "pal_botao_emergencia_testado", "pal_botao_emergencia_testado_obs", "Paleteira / Transpaleteira", True),
-    ("Cabo, conector e bateria verificados, se elétrica", "pal_cabo_conector_bateria_verificados", "pal_cabo_conector_bateria_verificados_obs", "Paleteira / Transpaleteira", False),
 ]
 
-CHECK_MECANICA_POR_ITEM = {nome.strip().casefold(): (campo, campo_obs, categoria, critico) for nome, campo, campo_obs, categoria, critico in CHECK_MECANICA_CAMPOS}
-CHECK_MECANICA_POR_CAMPO = {campo: (nome, campo_obs, categoria, critico) for nome, campo, campo_obs, categoria, critico in CHECK_MECANICA_CAMPOS}
+CHECK_MECANICA_LAVADORA_CAMPOS = CHECKLIST_COMUM_COMPLETO + [
+    ("Escovas / discos verificados", "lav_escovas_discos_verificados", "lav_escovas_discos_verificados_obs", "Lavadora", True),
+    ("Rodo e lâminas de sucção verificados", "lav_rodo_succao_verificado", "lav_rodo_succao_verificado_obs", "Lavadora", True),
+    ("Sistema de aspiração testado", "lav_sistema_aspiracao_testado", "lav_sistema_aspiracao_testado_obs", "Lavadora", True),
+    ("Tanque de água limpa verificado", "lav_tanque_agua_limpa_verificado", "lav_tanque_agua_limpa_verificado_obs", "Lavadora", False),
+    ("Tanque de recuperação verificado", "lav_tanque_recuperacao_verificado", "lav_tanque_recuperacao_verificado_obs", "Lavadora", False),
+    ("Mangueiras e conexões verificadas", "lav_mangueiras_conexoes_verificadas", "lav_mangueiras_conexoes_verificadas_obs", "Lavadora", False),
+    ("Sistema de dosagem de produto verificado", "lav_sistema_dosagem_verificado", "lav_sistema_dosagem_verificado_obs", "Lavadora", False),
+    ("Bateria, cabos e conectores verificados", "lav_bateria_cabos_conectores_verificados", "lav_bateria_cabos_conectores_verificados_obs", "Lavadora", True),
+    ("Carregador de bateria verificado", "lav_carregador_bateria_verificado", "lav_carregador_bateria_verificado_obs", "Lavadora", False),
+    ("Rodas / pneus verificados", "lav_rodas_pneus_verificados", "lav_rodas_pneus_verificados_obs", "Lavadora", True),
+    ("Tração e freio testados", "lav_tracao_freio_testados", "lav_tracao_freio_testados_obs", "Lavadora", True),
+    ("Sinalização e alarme de ré testados", "lav_sinalizacao_alarme_re_testados", "lav_sinalizacao_alarme_re_testados_obs", "Lavadora", False),
+    ("Elevação de escova / rodo testada", "lav_elevacao_escova_rodo_testada", "lav_elevacao_escova_rodo_testada_obs", "Lavadora", False),
+]
+
+CHECK_MECANICA_PALETEIRA_CAMPOS = CHECKLIST_COMUM_PALETEIRA + [
+    ("Timão testado", "pal_timao_testado", "pal_timao_testado_obs", "Paleteira", True),
+    ("Garfos e estrutura verificados", "pal_garfos_estrutura_verificados", "pal_garfos_estrutura_verificados_obs", "Paleteira", True),
+    ("Rodas de carga verificadas", "pal_rodas_carga_verificadas", "pal_rodas_carga_verificadas_obs", "Paleteira", True),
+    ("Rodas direcionais verificadas", "pal_rodas_direcionais_verificadas", "pal_rodas_direcionais_verificadas_obs", "Paleteira", True),
+    ("Sistema de elevação testado", "pal_sistema_elevacao_testado", "pal_sistema_elevacao_testado_obs", "Paleteira", True),
+    ("Sistema de descida testado", "pal_sistema_descida_testado", "pal_sistema_descida_testado_obs", "Paleteira", True),
+    ("Bomba hidráulica verificada", "pal_bomba_hidraulica_verificada", "pal_bomba_hidraulica_verificada_obs", "Paleteira", True),
+    ("Válvula de descida verificada", "pal_valvula_descida_verificada", "pal_valvula_descida_verificada_obs", "Paleteira", True),
+    ("Identificação e capacidade de carga legíveis", "pal_identificacao_capacidade_legivel", "pal_identificacao_capacidade_legivel_obs", "Paleteira", False),
+]
+
+CHECK_MECANICA_TRANSPALETEIRA_CAMPOS = CHECKLIST_COMUM_COMPLETO + [
+    ("Timão e comandos de movimentação testados", "tra_timao_comandos_testados", "tra_timao_comandos_testados_obs", "Transpaleteira elétrica", True),
+    ("Botão de emergência testado", "tra_botao_emergencia_testado", "tra_botao_emergencia_testado_obs", "Transpaleteira elétrica", True),
+    ("Botão anti-esmagamento testado", "tra_botao_antiesmagamento_testado", "tra_botao_antiesmagamento_testado_obs", "Transpaleteira elétrica", True),
+    ("Buzina testada", "tra_buzina_testada", "tra_buzina_testada_obs", "Transpaleteira elétrica", False),
+    ("Freio de serviço / estacionamento testado", "tra_freio_servico_estacionamento_testado", "tra_freio_servico_estacionamento_testado_obs", "Transpaleteira elétrica", True),
+    ("Rodas de carga verificadas", "tra_rodas_carga_verificadas", "tra_rodas_carga_verificadas_obs", "Transpaleteira elétrica", True),
+    ("Roda de tração verificada", "tra_roda_tracao_verificada", "tra_roda_tracao_verificada_obs", "Transpaleteira elétrica", True),
+    ("Garfos e estrutura verificados", "tra_garfos_estrutura_verificados", "tra_garfos_estrutura_verificados_obs", "Transpaleteira elétrica", True),
+    ("Sistema de elevação testado", "tra_sistema_elevacao_testado", "tra_sistema_elevacao_testado_obs", "Transpaleteira elétrica", True),
+    ("Sistema de descida testado", "tra_sistema_descida_testado", "tra_sistema_descida_testado_obs", "Transpaleteira elétrica", True),
+    ("Bateria, cabos e conectores verificados", "tra_bateria_cabos_conectores_verificados", "tra_bateria_cabos_conectores_verificados_obs", "Transpaleteira elétrica", True),
+    ("Carregador de bateria verificado", "tra_carregador_bateria_verificado", "tra_carregador_bateria_verificado_obs", "Transpaleteira elétrica", False),
+    ("Indicador de carga / painel testado", "tra_indicador_carga_painel_testado", "tra_indicador_carga_painel_testado_obs", "Transpaleteira elétrica", False),
+]
+
+CHECKLIST_CONFIG = {
+    "EMPILHADEIRA": {
+        "tabela": "check_mecanica",
+        "campos": CHECK_MECANICA_EMPILHADEIRA_CAMPOS,
+    },
+    "LAVADORA_PISO": {
+        "tabela": "check_mecanica_lavadora",
+        "campos": CHECK_MECANICA_LAVADORA_CAMPOS,
+    },
+    "PALETEIRA": {
+        "tabela": "check_mecanica_paleteira",
+        "campos": CHECK_MECANICA_PALETEIRA_CAMPOS,
+    },
+    "TRANSPALETEIRA_ELETRICA": {
+        "tabela": "check_mecanica_transpaleteira",
+        "campos": CHECK_MECANICA_TRANSPALETEIRA_CAMPOS,
+    },
+}
 
 
 def _status_check_mecanica_banco(valor):
@@ -2397,12 +2649,96 @@ def _status_check_mecanica_saida(valor):
     return "PENDENTE"
 
 
-def _montar_check_mecanica_linha(id_servico, itens, servico=None):
+def _normalizar_tipo_checklist_texto(*valores):
+    texto = " ".join(_valor_texto(v) for v in valores if _valor_texto(v))
+    normalizado = (
+        texto.upper()
+        .replace("Á", "A")
+        .replace("À", "A")
+        .replace("Â", "A")
+        .replace("Ã", "A")
+        .replace("É", "E")
+        .replace("Ê", "E")
+        .replace("Í", "I")
+        .replace("Ó", "O")
+        .replace("Ô", "O")
+        .replace("Õ", "O")
+        .replace("Ú", "U")
+        .replace("Ç", "C")
+    )
+    if "LAVADORA" in normalizado or "LIMPEZA" in normalizado or "RIDE-ON" in normalizado or "RIDE ON" in normalizado:
+        return "LAVADORA_PISO"
+    # TRANSPALETEIRA contém PALETEIRA; deve vir antes.
+    if "TRANSPALETEIRA" in normalizado:
+        return "TRANSPALETEIRA_ELETRICA"
+    if "PALETEIRA" in normalizado:
+        return "PALETEIRA"
+    return "EMPILHADEIRA"
+
+
+def _maquina_do_servico_checklist(id_servico, servico=None):
+    registro = dict(servico or {})
+    if not registro and _valor_texto(id_servico):
+        registro = selecionar_um("manutencao_servicos", {"id": id_servico}) or {}
+    if not registro:
+        return None, {}
+
+    maquina = None
+    id_maquina = registro.get("id_maquina")
+    if _valor_texto(id_maquina):
+        maquina = selecionar_um("maquinas", {"id": id_maquina})
+
+    if not maquina:
+        codigo = _valor_texto(registro.get("codigo_maquina"))
+        filtros = {"codigo": codigo} if codigo else {}
+        if filtros and possui_filial(registro.get("id_filial")):
+            filtros["id_filial"] = registro.get("id_filial")
+        maquina = selecionar_um("maquinas", filtros) if filtros else None
+
+    return maquina, registro
+
+
+def _tipo_checklist_do_servico(id_servico, servico=None):
+    maquina, registro = _maquina_do_servico_checklist(id_servico, servico=servico)
+    if maquina:
+        return _normalizar_tipo_checklist_texto(
+            maquina.get("tipo_maquina"),
+            maquina.get("descricao"),
+            maquina.get("codigo"),
+        )
+    return _normalizar_tipo_checklist_texto(
+        registro.get("tipo_maquina"),
+        registro.get("descricao_servico"),
+        registro.get("codigo_maquina"),
+    )
+
+
+def _config_checklist(tipo_checklist):
+    return CHECKLIST_CONFIG.get(tipo_checklist) or CHECKLIST_CONFIG["EMPILHADEIRA"]
+
+
+def _mapas_checklist(tipo_checklist):
+    campos = _config_checklist(tipo_checklist)["campos"]
+    por_item = {
+        nome.strip().casefold(): (campo, campo_obs, categoria, critico)
+        for nome, campo, campo_obs, categoria, critico in campos
+    }
+    por_campo = {
+        campo: (nome, campo_obs, categoria, critico)
+        for nome, campo, campo_obs, categoria, critico in campos
+    }
+    return por_item, por_campo
+
+
+def _montar_check_mecanica_linha(id_servico, itens, servico=None, tipo_checklist=None):
     if not _valor_texto(id_servico):
         raise ValueError("Informe id_servico para salvar o checklist da mecânica.")
     itens = list(itens or [])
     if not itens:
         raise ValueError("Informe os itens do checklist da mecânica.")
+
+    tipo = tipo_checklist or _tipo_checklist_do_servico(id_servico, servico=servico)
+    por_item, _ = _mapas_checklist(tipo)
 
     dados = {
         "id_servico": id_servico,
@@ -2421,9 +2757,13 @@ def _montar_check_mecanica_linha(id_servico, itens, servico=None):
         nome_item = _valor_texto(item.get("item"))
         if not nome_item:
             continue
-        mapping = CHECK_MECANICA_POR_ITEM.get(nome_item.casefold())
+        mapping = por_item.get(nome_item.casefold())
         if not mapping:
-            continue
+            # Bloqueia perda silenciosa de itens caso o Flutter e a API
+            # estejam com versões incompatíveis.
+            raise ValueError(
+                f"Item não reconhecido para o checklist {tipo}: {nome_item}"
+            )
         campo, campo_obs, _categoria, _critico = mapping
         status = _status_check_mecanica_banco(item.get("status") or item.get("status_item"))
         obs = _valor_texto(item.get("observacao"))
@@ -2450,35 +2790,39 @@ def _montar_check_mecanica_linha(id_servico, itens, servico=None):
 
     if observacoes_gerais:
         dados["observacao_geral"] = " | ".join(observacoes_gerais)
-    return dados
+    return tipo, dados
 
 
-def buscar_check_mecanica(id_servico=""):
+def buscar_check_mecanica(id_servico="", servico=None):
     if not _valor_texto(id_servico):
         return None
-    return selecionar_um("check_mecanica", {"id_servico": id_servico})
 
+    tipo_esperado = _tipo_checklist_do_servico(id_servico, servico=servico)
+    ordem = [tipo_esperado] + [t for t in CHECKLIST_CONFIG.keys() if t != tipo_esperado]
 
+    for tipo in ordem:
+        tabela = _config_checklist(tipo)["tabela"]
+        row = selecionar_um(tabela, {"id_servico": id_servico})
+        if row:
+            item = dict(row)
+            item["tipo_checklist"] = tipo
+            item["tabela_checklist"] = tabela
+            item["itens"] = _check_mecanica_para_lista(item)
+            item["checklist_liberacao_json"] = item["itens"]
+            return item
+    return None
 
 
 def buscar_checks_mecanica(codigo_maquina="", id_filial="", limit=200):
-    """Busca os checklists da mecânica vinculados aos serviços da máquina.
-
-    A tabela check_mecanica não é cabeçalho independente; ela usa
-    manutencao_servicos como cabeçalho via id_servico. Por isso a busca
-    precisa ser feita por JOIN com manutencao_servicos.
-    """
     codigo = _valor_texto(codigo_maquina)
     filtros_sql = []
     params = []
-
     if codigo:
-        filtros_sql.append("s.`codigo_maquina` = %s")
+        filtros_sql.append("`codigo_maquina` = %s")
         params.append(codigo)
     if possui_filial(id_filial):
-        filtros_sql.append("s.`id_filial` = %s")
+        filtros_sql.append("`id_filial` = %s")
         params.append(id_filial)
-
     where = " WHERE " + " AND ".join(filtros_sql) if filtros_sql else ""
 
     try:
@@ -2488,60 +2832,75 @@ def buscar_checks_mecanica(codigo_maquina="", id_filial="", limit=200):
     limit_int = max(1, min(limit_int, 2000))
 
     sql = f"""
-        SELECT
-            c.*,
-            s.`id_filial`,
-            s.`id_maquina`,
-            s.`codigo_maquina`,
-            s.`id_pendencia`,
-            s.`id_check`,
-            s.`tipo_servico`,
-            s.`data_servico`,
-            s.`entrada_oficina`,
-            s.`tempo_manutencao`,
-            s.`saida_oficina`,
-            s.`tempo_parada_minutos`,
-            s.`horimetro_servico`,
-            s.`descricao_servico`,
-            s.`responsavel_execucao`,
-            s.`responsavel_liberacao`,
-            s.`resultado_liberacao`,
-            s.`status_servico`
-        FROM `check_maquinas`.`check_mecanica` c
-        INNER JOIN `check_maquinas`.`manutencao_servicos` s
-            ON s.`id` = c.`id_servico`
+        SELECT *
+        FROM `check_maquinas`.`manutencao_servicos`
         {where}
-        ORDER BY s.`data_servico` DESC, c.`criado_em` DESC
+        ORDER BY `data_servico` DESC, `criado_em` DESC
         LIMIT {limit_int}
     """
-
     with conectar() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, params)
-            rows = cur.fetchall()
+            servicos = cur.fetchall()
 
     saida = []
-    for row in rows:
-        item = dict(row)
-        item["itens"] = _check_mecanica_para_lista(item)
-        item["checklist_liberacao_json"] = item["itens"]
-        saida.append(normalizar_linha_saida("check_mecanica", item))
+    for servico in servicos:
+        check = buscar_check_mecanica(servico.get("id"), servico=servico)
+        if not check:
+            continue
+        item = dict(check)
+        for campo in [
+            "id_filial", "id_maquina", "codigo_maquina", "id_pendencia",
+            "id_check", "tipo_servico", "data_servico", "entrada_oficina",
+            "tempo_manutencao", "saida_oficina", "tempo_parada_minutos",
+            "horimetro_servico", "descricao_servico", "responsavel_execucao",
+            "responsavel_liberacao", "resultado_liberacao", "status_servico",
+        ]:
+            item[campo] = servico.get(campo)
+        saida.append(item)
     return saida
 
+
 def salvar_check_mecanica(id_servico, itens, servico=None, conn=None):
-    dados = _montar_check_mecanica_linha(id_servico, itens, servico=servico)
-    existente = buscar_check_mecanica(id_servico)
+    tipo, dados = _montar_check_mecanica_linha(
+        id_servico, itens, servico=servico
+    )
+    tabela = _config_checklist(tipo)["tabela"]
+
+    existente = selecionar_um(tabela, {"id_servico": id_servico})
     if existente:
-        atualizar("check_mecanica", dados, {"id_servico": id_servico}, conn=conn)
-        return buscar_check_mecanica(id_servico)
-    return inserir("check_mecanica", dados, conn=conn)
+        atualizar(tabela, dados, {"id_servico": id_servico}, conn=conn)
+    else:
+        inserir(tabela, dados, conn=conn)
+
+    retorno = selecionar_um(tabela, {"id_servico": id_servico})
+    if retorno:
+        retorno = dict(retorno)
+        retorno["tipo_checklist"] = tipo
+        retorno["tabela_checklist"] = tabela
+        retorno["itens"] = _check_mecanica_para_lista(retorno)
+        retorno["checklist_liberacao_json"] = retorno["itens"]
+    return retorno
 
 
 def _check_mecanica_para_lista(row):
     if not row:
         return []
+    tipo = _valor_texto(row.get("tipo_checklist"))
+    if not tipo:
+        # Detecta pelo conjunto de colunas quando chamado com linha bruta.
+        if any(str(k).startswith("lav_") for k in row.keys()):
+            tipo = "LAVADORA_PISO"
+        elif any(str(k).startswith("tra_") for k in row.keys()):
+            tipo = "TRANSPALETEIRA_ELETRICA"
+        elif "pal_garfos_estrutura_verificados" in row:
+            tipo = "PALETEIRA"
+        else:
+            tipo = "EMPILHADEIRA"
+
+    _, por_campo = _mapas_checklist(tipo)
     itens = []
-    for campo, (nome, campo_obs, categoria, critico) in CHECK_MECANICA_POR_CAMPO.items():
+    for campo, (nome, campo_obs, categoria, critico) in por_campo.items():
         status = _valor_texto(row.get(campo))
         if not status:
             continue
@@ -2551,6 +2910,7 @@ def _check_mecanica_para_lista(row):
             "status": _status_check_mecanica_saida(status),
             "observacao": _valor_texto(row.get(campo_obs)),
             "critico": critico,
+            "aplicacao": tipo,
         })
     return itens
 
@@ -2559,12 +2919,14 @@ def _enriquecer_servicos_com_check_mecanica(servicos):
     saida = []
     for registro in servicos:
         servico = _enriquecer_tempo_oficina(registro)
-        check = buscar_check_mecanica(servico.get("id"))
+        check = buscar_check_mecanica(servico.get("id"), servico=servico)
         if check:
             servico["check_mecanica"] = check
+            servico["tipo_checklist_mecanica"] = check.get("tipo_checklist")
             servico["checklist_liberacao_json"] = _check_mecanica_para_lista(check)
         saida.append(servico)
     return saida
+
 
 def buscar_servicos_manutencao(
     id_filial="",
