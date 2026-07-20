@@ -115,6 +115,13 @@ function obterPastaUpload(pasta) {
     finalizacao_turno: 'pos_uso',
     pos_turno: 'pos_uso',
     foto_pos_uso: 'pos_uso',
+
+    manutencao: 'manutencao',
+    manutencoes: 'manutencao',
+    manutencao_maquina: 'manutencao',
+    manutencao_liberacao: 'manutencao',
+    liberacao_maquina: 'manutencao',
+    foto_liberacao: 'manutencao',
   };
 
   return aliases[pastaLimpa] || PASTA_PADRAO;
@@ -250,6 +257,11 @@ async function uploadImagem(req, res) {
   const empilhadeira = getCampo(fields, 'empilhadeira', 'sem_empilhadeira');
   const idCheck = getCampoAlternativo(fields, ['id_check', 'idCheck', 'check_id'], 'sem_check');
   const idFilial = getCampoAlternativo(fields, ['id_filial', 'idFilial'], '');
+  const origemId = getCampoAlternativo(
+    fields,
+    ['origem_id', 'origemId', 'id_servico', 'idServico'],
+    '',
+  );
   const categoria = getCampo(fields, 'categoria', 'geral');
   const item = getCampo(fields, 'item', 'item');
   const pastaUpload = obterPastaUpload(
@@ -280,9 +292,15 @@ async function uploadImagem(req, res) {
       ? arquivo.mimetype
       : contentTypePorExtensao(extensao);
 
+  const origemIdLimpo = normalizarTexto(origemId);
+  const prefixoArquivo =
+    pastaUpload === 'manutencao' && origemIdLimpo
+      ? `servico_${origemIdLimpo}`
+      : `check_${idCheckLimpo}`;
+
   const nomeArquivo =
     `${pastaUpload}/${ano}/${mes}/emp_${empilhadeiraLimpa}/` +
-    `check_${idCheckLimpo}_${categoriaLimpa}_${itemLimpo}_${Date.now()}.${extensao}`;
+    `${prefixoArquivo}_${categoriaLimpa}_${itemLimpo}_${Date.now()}.${extensao}`;
 
   const blobServiceClient = criarBlobServiceClient();
   const containerClient = blobServiceClient.getContainerClient(containerName);
@@ -298,9 +316,10 @@ async function uploadImagem(req, res) {
       blobContentType: contentType,
     },
     metadata: {
-      origem: 'check_empi',
+      origem: pastaUpload === 'manutencao' ? 'manutencao' : 'check_empi',
       pasta: pastaUpload,
       id_check: idCheckLimpo,
+      origem_id: origemIdLimpo,
       id_filial: normalizarTexto(idFilial),
       empilhadeira: empilhadeiraLimpa,
       categoria: categoriaLimpa,
@@ -345,6 +364,102 @@ async function uploadImagem(req, res) {
   });
 }
 
+
+async function listarFotosManutencao(req, res) {
+  const empilhadeira = normalizarTexto(req.query?.empilhadeira || req.query?.codigo_maquina || '');
+  const ano = String(req.query?.ano || '').trim();
+  const mes = String(req.query?.mes || '').trim().padStart(2, '0');
+  const origemId = normalizarTexto(req.query?.origem_id || req.query?.origemId || req.query?.id_servico || '');
+
+  if (!empilhadeira || !/^\d{4}$/.test(ano) || !/^\d{2}$/.test(mes)) {
+    return responder(res, 400, {
+      sucesso: false,
+      erro: 'Informe empilhadeira, ano (AAAA) e mes (MM) para listar fotos da manutencao.',
+    });
+  }
+
+  const { containerName } = getAzureConfig();
+  const blobServiceClient = criarBlobServiceClient();
+  const containerClient = blobServiceClient.getContainerClient(containerName);
+
+  const prefixos = [
+    `manutencao/${ano}/${mes}/emp_${empilhadeira}/`,
+    // Compatibilidade com fotos antigas salvas antes da criacao da pasta manutencao.
+    `avarias/${ano}/${mes}/emp_${empilhadeira}/`,
+  ];
+
+  const itens = [];
+  const vistos = new Set();
+
+  for (const prefix of prefixos) {
+    for await (const blob of containerClient.listBlobsFlat({
+      prefix,
+      includeMetadata: true,
+    })) {
+      const nome = String(blob.name || '');
+      const nomeNormalizado = normalizarTexto(nome);
+      const metadata = blob.metadata || {};
+      const pasta = String(metadata.pasta || '').toLowerCase();
+      const origem = String(metadata.origem || '').toLowerCase();
+      const origemMeta = normalizarTexto(metadata.origem_id || '');
+
+      const ehPastaNova = nome.startsWith('manutencao/');
+      const ehLegadoLiberacao =
+        nome.startsWith('avarias/') &&
+        (nomeNormalizado.includes('manutencao_liberacao_maquina') ||
+          (String(metadata.categoria || '').toLowerCase() === 'manutencao' &&
+            String(metadata.item || '').toLowerCase() === 'liberacao_maquina'));
+
+      if (!ehPastaNova && !ehLegadoLiberacao) continue;
+
+      // Nas fotos novas, quando houver origem_id, respeita o servico exato.
+      // As fotos legadas check_0 nao possuem esse dado; elas sao recuperadas
+      // por maquina + competencia para nao perder evidencias ja enviadas.
+      if (origemId && ehPastaNova) {
+        const nomeTemServico = nomeNormalizado.includes(`servico_${origemId}_`);
+        if (origemMeta) {
+          if (origemMeta !== origemId && !nomeTemServico) continue;
+        } else if (!nomeTemServico) {
+          continue;
+        }
+      }
+
+      if (vistos.has(nome)) continue;
+      vistos.add(nome);
+
+      itens.push({
+        origem_tabela: 'manutencao_servicos',
+        origem_id: origemMeta || null,
+        tipo_anexo: 'FOTO_LIBERACAO',
+        nome_arquivo: nome.split('/').pop() || nome,
+        caminho_arquivo: nome,
+        blob_azure: nome,
+        container_azure: containerName,
+        storage_origem: 'AZURE',
+        url_publica: criarUrlVisualizacaoApi(req, nome),
+        url_azure: null,
+        content_type: blob.properties?.contentType || null,
+        tamanho_bytes: blob.properties?.contentLength || null,
+        criado_em: blob.properties?.lastModified || null,
+        pasta_azure: ehPastaNova ? 'manutencao' : 'avarias',
+        origem_azure: origem || (ehPastaNova ? 'manutencao' : 'check_empi'),
+      });
+    }
+  }
+
+  itens.sort((a, b) => {
+    const da = new Date(a.criado_em || 0).getTime();
+    const db = new Date(b.criado_em || 0).getTime();
+    return da - db;
+  });
+
+  return responder(res, 200, {
+    sucesso: true,
+    dados: itens,
+    total: itens.length,
+  });
+}
+
 async function gerarUrlTemporaria(req, res) {
   const blob =
     req.query?.blob ||
@@ -361,7 +476,7 @@ async function gerarUrlTemporaria(req, res) {
         visualizar: 'GET /api/api_imagens?blob=CAMINHO_DO_BLOB',
         json: 'GET /api/api_imagens?blob=CAMINHO_DO_BLOB&json=1',
       },
-      pastas_permitidas: ['avarias', 'pos_conferencia', 'pos_uso'],
+      pastas_permitidas: ['avarias', 'pos_conferencia', 'pos_uso', 'manutencao'],
     });
   }
 
@@ -433,6 +548,9 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'GET') {
+      if (String(req.query?.acao || '').toLowerCase() === 'listar_manutencao') {
+        return await listarFotosManutencao(req, res);
+      }
       return await gerarUrlTemporaria(req, res);
     }
 
