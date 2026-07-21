@@ -2517,6 +2517,278 @@ def buscar_operador_por_matricula(matricula):
 
 
 
+# ============================================================
+# OPERADORES - SINCRONIZAÇÃO RH / CONSULTA POR NOME
+# ============================================================
+
+def sincronizar_operadores_rh():
+    """
+    Sincroniza a tabela existente check_maquinas.operador com base_rh.head_count.
+
+    Regras:
+    - NÃO usa/preenche matrícula nesta etapa;
+    - NÃO altera id_filial nesta etapa;
+    - atualiza nome, filial, turno, cargo, situacao e apto;
+    - apto = 'S' somente quando:
+        situacao = 'efetivo'
+        E cargo = 'OPERADOR DE EMPILHADEIRA'
+    - caso situacao/cargo mudem no RH, apto passa automaticamente para 'N';
+    - novos registros são inseridos somente se hoje forem operadores efetivos;
+    - ligação temporária entre as tabelas é feita pelo nome normalizado.
+
+    Observação:
+    Enquanto não houver um identificador estável do RH armazenado na tabela
+    operador, nomes homônimos continuam sendo uma limitação conhecida.
+    """
+    with conectar() as conn:
+        try:
+            with conn.cursor() as cur:
+                # Atualiza quem já existe, inclusive mudança de turno,
+                # situação, cargo ou filial.
+                cur.execute(
+                    """
+                    UPDATE `check_maquinas`.`operador` o
+                    INNER JOIN `base_rh`.`head_count` hc
+                        ON
+                            CONVERT(UPPER(TRIM(o.`nome`)) USING utf8mb4)
+                                COLLATE utf8mb4_unicode_ci
+                            =
+                            CONVERT(
+                                UPPER(TRIM(CAST(hc.`nome` AS CHAR)))
+                                USING utf8mb4
+                            ) COLLATE utf8mb4_unicode_ci
+                    SET
+                        o.`nome` = TRIM(CAST(hc.`nome` AS CHAR)),
+                        o.`filial` = TRIM(CAST(hc.`filial` AS CHAR)),
+                        o.`turno` = TRIM(CAST(hc.`turno` AS CHAR)),
+                        o.`cargo` = TRIM(CAST(hc.`cargo` AS CHAR)),
+                        o.`situacao` = TRIM(CAST(hc.`situacao` AS CHAR)),
+                        o.`apto` = CASE
+                            WHEN LOWER(TRIM(CAST(hc.`situacao` AS CHAR))) = 'efetivo'
+                             AND UPPER(TRIM(CAST(hc.`cargo` AS CHAR))) =
+                                 'OPERADOR DE EMPILHADEIRA'
+                            THEN 'S'
+                            ELSE 'N'
+                        END
+                    """
+                )
+                atualizados = cur.rowcount
+
+                # Insere novos operadores elegíveis.
+                # matricula e id_filial ficam sem preenchimento nesta etapa.
+                cur.execute(
+                    """
+                    INSERT INTO `check_maquinas`.`operador` (
+                        `nome`,
+                        `filial`,
+                        `apto`,
+                        `turno`,
+                        `cargo`,
+                        `situacao`
+                    )
+                    SELECT
+                        TRIM(CAST(hc.`nome` AS CHAR)),
+                        TRIM(CAST(hc.`filial` AS CHAR)),
+                        'S',
+                        TRIM(CAST(hc.`turno` AS CHAR)),
+                        TRIM(CAST(hc.`cargo` AS CHAR)),
+                        TRIM(CAST(hc.`situacao` AS CHAR))
+                    FROM `base_rh`.`head_count` hc
+                    WHERE LOWER(TRIM(CAST(hc.`situacao` AS CHAR))) = 'efetivo'
+                      AND UPPER(TRIM(CAST(hc.`cargo` AS CHAR))) =
+                          'OPERADOR DE EMPILHADEIRA'
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM `check_maquinas`.`operador` o
+                          WHERE
+                              CONVERT(UPPER(TRIM(o.`nome`)) USING utf8mb4)
+                                  COLLATE utf8mb4_unicode_ci
+                              =
+                              CONVERT(
+                                  UPPER(TRIM(CAST(hc.`nome` AS CHAR)))
+                                  USING utf8mb4
+                              ) COLLATE utf8mb4_unicode_ci
+                      )
+                    """
+                )
+                inseridos = cur.rowcount
+
+            conn.commit()
+            return {
+                "atualizados": int(atualizados or 0),
+                "inseridos": int(inseridos or 0),
+            }
+        except Exception:
+            conn.rollback()
+            raise
+
+
+def buscar_operadores(
+    nome="",
+    filial="",
+    apenas_aptos=True,
+    sincronizar=True,
+    limit=500,
+):
+    """
+    Lista operadores para uso no app/site.
+
+    Por padrão retorna somente quem realmente pode aparecer para operação:
+      apto = S
+      situacao = efetivo
+      cargo = OPERADOR DE EMPILHADEIRA
+
+    A matrícula continua no retorno para compatibilidade, mesmo vazia.
+    """
+    if sincronizar:
+        sincronizar_operadores_rh()
+
+    try:
+        limit_int = int(limit or 500)
+    except Exception:
+        limit_int = 500
+    limit_int = max(1, min(limit_int, 2000))
+
+    sql = """
+        SELECT
+            `id`,
+            `matricula`,
+            `nome`,
+            `id_filial`,
+            `filial`,
+            `apto`,
+            `turno`,
+            `cargo`,
+            `situacao`
+        FROM `check_maquinas`.`operador`
+        WHERE 1 = 1
+    """
+    params = []
+
+    if apenas_aptos:
+        sql += """
+          AND UPPER(TRIM(COALESCE(`apto`, ''))) = 'S'
+          AND LOWER(TRIM(COALESCE(`situacao`, ''))) = 'efetivo'
+          AND UPPER(TRIM(COALESCE(`cargo`, ''))) = 'OPERADOR DE EMPILHADEIRA'
+        """
+
+    nome_texto = _valor_texto(nome)
+    if nome_texto:
+        sql += """
+          AND CONVERT(UPPER(TRIM(`nome`)) USING utf8mb4)
+              COLLATE utf8mb4_unicode_ci
+              LIKE
+              CONVERT(UPPER(%s) USING utf8mb4)
+              COLLATE utf8mb4_unicode_ci
+        """
+        params.append(f"%{nome_texto}%")
+
+    filial_texto = _valor_texto(filial)
+    if filial_texto:
+        sql += """
+          AND CONVERT(UPPER(TRIM(`filial`)) USING utf8mb4)
+              COLLATE utf8mb4_unicode_ci
+              =
+              CONVERT(UPPER(%s) USING utf8mb4)
+              COLLATE utf8mb4_unicode_ci
+        """
+        params.append(filial_texto)
+
+    sql += f" ORDER BY `nome` ASC LIMIT {limit_int}"
+
+    with conectar() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+
+    return [serializar(dict(row)) for row in rows]
+
+
+def buscar_operador_por_nome(nome, filial="", sincronizar=True):
+    """
+    Busca um operador pelo nome.
+
+    Primeiro tenta correspondência exata. Caso não encontre e o texto seja
+    parcial, retorna a lista de candidatos compatíveis para a interface poder
+    permitir seleção segura.
+    """
+    nome_texto = _valor_texto(nome)
+    if not nome_texto:
+        return None
+
+    if sincronizar:
+        sincronizar_operadores_rh()
+
+    sql = """
+        SELECT
+            `id`,
+            `matricula`,
+            `nome`,
+            `id_filial`,
+            `filial`,
+            `apto`,
+            `turno`,
+            `cargo`,
+            `situacao`
+        FROM `check_maquinas`.`operador`
+        WHERE UPPER(TRIM(COALESCE(`apto`, ''))) = 'S'
+          AND LOWER(TRIM(COALESCE(`situacao`, ''))) = 'efetivo'
+          AND UPPER(TRIM(COALESCE(`cargo`, ''))) = 'OPERADOR DE EMPILHADEIRA'
+          AND CONVERT(UPPER(TRIM(`nome`)) USING utf8mb4)
+              COLLATE utf8mb4_unicode_ci
+              =
+              CONVERT(UPPER(%s) USING utf8mb4)
+              COLLATE utf8mb4_unicode_ci
+    """
+    params = [nome_texto]
+
+    filial_texto = _valor_texto(filial)
+    if filial_texto:
+        sql += """
+          AND CONVERT(UPPER(TRIM(`filial`)) USING utf8mb4)
+              COLLATE utf8mb4_unicode_ci
+              =
+              CONVERT(UPPER(%s) USING utf8mb4)
+              COLLATE utf8mb4_unicode_ci
+        """
+        params.append(filial_texto)
+
+    sql += " ORDER BY `id` ASC LIMIT 2"
+
+    with conectar() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            exatos = cur.fetchall()
+
+    if len(exatos) == 1:
+        return serializar(dict(exatos[0]))
+
+    if len(exatos) > 1:
+        return {
+            "ambigua": True,
+            "operadores": [serializar(dict(row)) for row in exatos],
+        }
+
+    candidatos = buscar_operadores(
+        nome=nome_texto,
+        filial=filial_texto,
+        apenas_aptos=True,
+        sincronizar=False,
+        limit=50,
+    )
+    if not candidatos:
+        return None
+
+    if len(candidatos) == 1:
+        return candidatos[0]
+
+    return {
+        "ambigua": True,
+        "operadores": candidatos,
+    }
+
+
+
 
 
 # ============================================================
@@ -3824,6 +4096,34 @@ class handler(BaseHTTPRequestHandler):
             if acao in ["buscarOperadorPorMatricula", "buscarOperador"]:
                 return responder(self, 200, {"sucesso": True, "dados": buscar_operador_por_matricula(query_param(query, "matricula", ""))})
 
+            if acao == "buscarOperadores":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": buscar_operadores(
+                        nome=query_param(query, "nome", ""),
+                        filial=query_param(query, "filial", ""),
+                        apenas_aptos=query_param(query, "apenasAptos", "true").lower() != "false",
+                        sincronizar=query_param(query, "sincronizar", "true").lower() != "false",
+                        limit=query_param(query, "limit", "500"),
+                    ),
+                })
+
+            if acao == "buscarOperadorPorNome":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": buscar_operador_por_nome(
+                        query_param(query, "nome", ""),
+                        filial=query_param(query, "filial", ""),
+                        sincronizar=query_param(query, "sincronizar", "true").lower() != "false",
+                    ),
+                })
+
+            if acao == "sincronizarOperadoresRH":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": sincronizar_operadores_rh(),
+                })
+
             if acao == "buscarFiliais":
                 return responder(self, 200, {"sucesso": True, "dados": buscar_filiais()})
 
@@ -4013,6 +4313,36 @@ class handler(BaseHTTPRequestHandler):
             if acao in ["buscarOperadorPorMatricula", "buscarOperador"]:
                 dados = body.get("dados") if isinstance(body.get("dados"), dict) else {}
                 return responder(self, 200, {"sucesso": True, "dados": buscar_operador_por_matricula(body.get("matricula", "") or dados.get("matricula", ""))})
+
+            if acao == "buscarOperadores":
+                dados = body.get("dados") if isinstance(body.get("dados"), dict) else {}
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": buscar_operadores(
+                        nome=body.get("nome", "") or dados.get("nome", ""),
+                        filial=body.get("filial", "") or dados.get("filial", ""),
+                        apenas_aptos=body.get("apenasAptos", dados.get("apenasAptos", True)) is not False,
+                        sincronizar=body.get("sincronizar", dados.get("sincronizar", True)) is not False,
+                        limit=body.get("limit", dados.get("limit", 500)),
+                    ),
+                })
+
+            if acao == "buscarOperadorPorNome":
+                dados = body.get("dados") if isinstance(body.get("dados"), dict) else {}
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": buscar_operador_por_nome(
+                        body.get("nome", "") or dados.get("nome", ""),
+                        filial=body.get("filial", "") or dados.get("filial", ""),
+                        sincronizar=body.get("sincronizar", dados.get("sincronizar", True)) is not False,
+                    ),
+                })
+
+            if acao == "sincronizarOperadoresRH":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": sincronizar_operadores_rh(),
+                })
 
             if acao == "autenticarUsuarioWeb":
                 usuario = autenticar_usuario_web(body.get("usuario", ""), body.get("senha", ""))
