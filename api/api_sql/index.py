@@ -2916,15 +2916,94 @@ def _check_mecanica_para_lista(row):
 
 
 def _enriquecer_servicos_com_check_mecanica(servicos):
+    """
+    Enriquece uma lista de serviços sem executar consultas N+1.
+
+    Antes, para cada serviço eram feitas:
+      - até 1 consulta em maquinas para descobrir o tipo;
+      - até 4 consultas nas tabelas de checklist.
+
+    No cronograma mensal isso podia gerar mais de 100 conexões/queries
+    sequenciais e estourar o timeout de 30 segundos.
+
+    Agora todos os checklists são carregados em lote, usando no máximo
+    quatro grupos de consultas, independentemente da quantidade de serviços.
+    """
+    preparados = [_enriquecer_tempo_oficina(registro) for registro in (servicos or [])]
+
+    ids_servicos = []
+    vistos = set()
+    for servico in preparados:
+        sid = servico.get("id")
+        if sid in [None, ""]:
+            continue
+        chave = str(sid)
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        ids_servicos.append(sid)
+
+    if not ids_servicos:
+        return preparados
+
+    # Se por algum motivo existir um registro legado em check_mecanica e
+    # também um registro novo dedicado para o mesmo serviço, a tabela
+    # dedicada tem prioridade.
+    prioridade_tipos = [
+        "LAVADORA_PISO",
+        "PALETEIRA",
+        "TRANSPALETEIRA_ELETRICA",
+        "EMPILHADEIRA",
+    ]
+
+    checks_por_servico = {}
+    tamanho_lote = 500
+
+    with conectar() as conn:
+        with conn.cursor() as cur:
+            for tipo in prioridade_tipos:
+                tabela = _config_checklist(tipo)["tabela"]
+
+                for inicio in range(0, len(ids_servicos), tamanho_lote):
+                    lote = ids_servicos[inicio:inicio + tamanho_lote]
+                    placeholders = ", ".join(["%s"] * len(lote))
+
+                    sql = f"""
+                        SELECT *
+                        FROM `{cfg_tabela(tabela)['schema']}`.`{cfg_tabela(tabela)['table']}`
+                        WHERE `id_servico` IN ({placeholders})
+                    """
+                    cur.execute(sql, lote)
+
+                    for row in cur.fetchall():
+                        sid = row.get("id_servico")
+                        chave = str(sid)
+                        if chave in checks_por_servico:
+                            continue
+
+                        item = normalizar_linha_saida(tabela, row)
+                        item = dict(item)
+                        item["tipo_checklist"] = tipo
+                        item["tabela_checklist"] = tabela
+                        item["itens"] = _check_mecanica_para_lista(item)
+                        item["checklist_liberacao_json"] = item["itens"]
+                        checks_por_servico[chave] = item
+
     saida = []
-    for registro in servicos:
-        servico = _enriquecer_tempo_oficina(registro)
-        check = buscar_check_mecanica(servico.get("id"), servico=servico)
+    for servico in preparados:
+        item_servico = dict(servico)
+        check = checks_por_servico.get(str(item_servico.get("id")))
+
         if check:
-            servico["check_mecanica"] = check
-            servico["tipo_checklist_mecanica"] = check.get("tipo_checklist")
-            servico["checklist_liberacao_json"] = _check_mecanica_para_lista(check)
-        saida.append(servico)
+            item_servico["check_mecanica"] = check
+            item_servico["tipo_checklist_mecanica"] = check.get("tipo_checklist")
+            item_servico["checklist_liberacao_json"] = check.get(
+                "checklist_liberacao_json",
+                [],
+            )
+
+        saida.append(item_servico)
+
     return saida
 
 
