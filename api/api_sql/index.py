@@ -181,6 +181,138 @@ TABLES = {
         "bool_columns": [],
         "json_columns": [],
     },
+    "check_paleteira": {
+        "schema": "check_maquinas",
+        "table": "check_paleteira",
+        "pk": "id",
+        "columns": [
+            "id",
+            "id_maquina",
+            "codigo_maquina",
+            "operador",
+            "turno",
+            "data_abertura",
+            "data_finalizacao",
+            "status_check",
+            "resultado_check",
+            "observacao_geral",
+            "seg_garfos_estrutura",
+            "seg_garfos_estrutura_obs",
+            "seg_identificacao_capacidade",
+            "seg_identificacao_capacidade_obs",
+            "mec_rodas",
+            "mec_rodas_obs",
+            "mec_timao",
+            "mec_timao_obs",
+            "mec_vazamento_hidraulico",
+            "mec_vazamento_hidraulico_obs",
+            "ope_elevacao",
+            "ope_elevacao_obs",
+            "ope_descida",
+            "ope_descida_obs",
+            "ope_movimentacao",
+            "ope_movimentacao_obs",
+            "id_filial",
+            "criado_em",
+            "atualizado_em",
+        ],
+        "bool_columns": [],
+        "json_columns": [],
+    },
+    "check_transpaleteira": {
+        "schema": "check_maquinas",
+        "table": "check_transpaleteira",
+        "pk": "id",
+        "columns": [
+            "id",
+            "id_maquina",
+            "codigo_maquina",
+            "operador",
+            "turno",
+            "data_abertura",
+            "data_finalizacao",
+            "horimetro_inicial",
+            "horimetro_final",
+            "status_check",
+            "resultado_check",
+            "observacao_geral",
+            "seg_garfos_estrutura",
+            "seg_garfos_estrutura_obs",
+            "seg_buzina",
+            "seg_buzina_obs",
+            "seg_botao_emergencia",
+            "seg_botao_emergencia_obs",
+            "seg_antiesmagamento",
+            "seg_antiesmagamento_obs",
+            "mec_rodas",
+            "mec_rodas_obs",
+            "mec_bateria_conectores",
+            "mec_bateria_conectores_obs",
+            "ope_timao_comandos",
+            "ope_timao_comandos_obs",
+            "ope_freio",
+            "ope_freio_obs",
+            "ope_elevacao_descida",
+            "ope_elevacao_descida_obs",
+            "ope_painel_indicadores",
+            "ope_painel_indicadores_obs",
+            "id_filial",
+            "carga_inicial",
+            "carga_final",
+            "ultima_carga_realizada",
+            "criado_em",
+            "atualizado_em",
+        ],
+        "bool_columns": [],
+        "json_columns": [],
+    },
+    "check_limpeza": {
+        "schema": "check_maquinas",
+        "table": "check_limpeza",
+        "pk": "id",
+        "columns": [
+            "id",
+            "id_maquina",
+            "codigo_maquina",
+            "operador",
+            "turno",
+            "data_abertura",
+            "data_finalizacao",
+            "horimetro_inicial",
+            "horimetro_final",
+            "status_check",
+            "resultado_check",
+            "observacao_geral",
+            "seg_freio",
+            "seg_freio_obs",
+            "seg_sinalizacao_alarme",
+            "seg_sinalizacao_alarme_obs",
+            "mec_escovas_discos",
+            "mec_escovas_discos_obs",
+            "mec_rodo_succao",
+            "mec_rodo_succao_obs",
+            "mec_mangueiras_vazamentos",
+            "mec_mangueiras_vazamentos_obs",
+            "mec_tanques",
+            "mec_tanques_obs",
+            "mec_bateria_conectores",
+            "mec_bateria_conectores_obs",
+            "ope_aspiracao",
+            "ope_aspiracao_obs",
+            "ope_tracao_direcao",
+            "ope_tracao_direcao_obs",
+            "ope_comandos_painel",
+            "ope_comandos_painel_obs",
+            "id_filial",
+            "carga_inicial",
+            "carga_final",
+            "ultima_carga_realizada",
+            "criado_em",
+            "atualizado_em",
+        ],
+        "bool_columns": [],
+        "json_columns": [],
+    },
     "check_empi_pendencias": {
         "schema": "check_maquinas",
         "table": "check_empi_pendencias",
@@ -917,6 +1049,7 @@ def normalizar_valor_para_banco(nome_tabela, coluna, valor):
         "saida_oficina",
         "ultima_preventiva",
         "prox_preventiva",
+        "ultima_carga_realizada",
     ]:
         return normalizar_data_mysql(valor)
 
@@ -1035,7 +1168,12 @@ def inserir(nome_tabela, dados, conn=None):
     dados = dict(dados or {})
 
     # Defaults leves para manter comportamento parecido com Supabase/app.
-    if nome_tabela == "check_empi":
+    if nome_tabela in [
+        "check_empi",
+        "check_paleteira",
+        "check_transpaleteira",
+        "check_limpeza",
+    ]:
         dados.setdefault("data_abertura", agora_mysql())
         dados.setdefault("criado_em", agora_mysql())
     elif nome_tabela in [
@@ -1204,6 +1342,400 @@ def buscar_checks(id_filial="", status_check=""):
     if str(status_check or "").strip():
         filtros["status_check"] = status_check
     return selecionar("check_empi", filtros=filtros, order_by="data_abertura", ascending=False)
+
+
+
+# ============================================================
+# CHECKLISTS DO OPERADOR - MÁQUINAS AUXILIARES
+# ============================================================
+
+CHECKS_OPERADOR_AUXILIARES = {
+    "PLT_MANUAL": "check_paleteira",
+    "PLT_ELETRICA": "check_transpaleteira",
+    "LIMPEZA": "check_limpeza",
+}
+
+
+def _normalizar_texto_auxiliar(valor):
+    texto = str(valor or "").strip().upper()
+    substituicoes = {
+        "Á": "A", "À": "A", "Â": "A", "Ã": "A",
+        "É": "E", "Ê": "E",
+        "Í": "I",
+        "Ó": "O", "Ô": "O", "Õ": "O",
+        "Ú": "U",
+        "Ç": "C",
+    }
+    for origem, destino in substituicoes.items():
+        texto = texto.replace(origem, destino)
+    return texto.replace("_", "-").replace(" ", "-")
+
+
+def identificar_tipo_check_operador(
+    tipo_checklist="",
+    codigo_maquina="",
+    tipo_maquina="",
+):
+    """
+    Resolve qual tabela de checklist diário deve ser usada.
+
+    Padrões oficiais adotados:
+      PLT-MANUAL   -> check_paleteira
+      PLT-ELETRICA -> check_transpaleteira
+      LIMP         -> check_limpeza
+
+    Também aceita nomes descritivos para manter flexibilidade com o cadastro
+    de máquinas existente.
+    """
+    valores = [
+        _normalizar_texto_auxiliar(tipo_checklist),
+        _normalizar_texto_auxiliar(codigo_maquina),
+        _normalizar_texto_auxiliar(tipo_maquina),
+    ]
+    texto = "|".join(v for v in valores if v)
+
+    if (
+        "PLT-MANUAL" in texto
+        or "PALETEIRA-MANUAL" in texto
+        or texto == "PALETEIRA"
+    ):
+        return "PLT_MANUAL"
+
+    if (
+        "PLT-ELETRICA" in texto
+        or "PALETEIRA-ELETRICA" in texto
+        or "TRANSPALETEIRA" in texto
+        or "TRANSPALETEIRA-ELETRICA" in texto
+    ):
+        return "PLT_ELETRICA"
+
+    if (
+        "LIMP" in texto
+        or "LIMPEZA" in texto
+        or "LAVADORA" in texto
+        or "MAQUINA-DE-LIMPEZA" in texto
+        or "MAQUINA-LIMPEZA" in texto
+    ):
+        return "LIMPEZA"
+
+    return ""
+
+
+def _tabela_check_operador_auxiliar(
+    tipo_checklist="",
+    codigo_maquina="",
+    tipo_maquina="",
+):
+    tipo = identificar_tipo_check_operador(
+        tipo_checklist=tipo_checklist,
+        codigo_maquina=codigo_maquina,
+        tipo_maquina=tipo_maquina,
+    )
+    tabela = CHECKS_OPERADOR_AUXILIARES.get(tipo)
+    if not tabela:
+        raise ValueError(
+            "Tipo de checklist auxiliar não reconhecido. "
+            "Use PLT-MANUAL, PLT-ELETRICA ou LIMP."
+        )
+    return tipo, tabela
+
+
+def buscar_checks_operador_auxiliar(
+    tipo_checklist="",
+    codigo_maquina="",
+    tipo_maquina="",
+    id_filial="",
+    status_check="",
+    operador="",
+    limit=500,
+):
+    tipo, tabela = _tabela_check_operador_auxiliar(
+        tipo_checklist=tipo_checklist,
+        codigo_maquina=codigo_maquina,
+        tipo_maquina=tipo_maquina,
+    )
+
+    filtros = {}
+    if codigo_maquina:
+        filtros["codigo_maquina"] = codigo_maquina
+    if possui_filial(id_filial):
+        filtros["id_filial"] = id_filial
+    if str(status_check or "").strip():
+        filtros["status_check"] = status_check
+    if str(operador or "").strip():
+        filtros["operador"] = operador
+
+    rows = selecionar(
+        tabela,
+        filtros=filtros,
+        order_by="data_abertura",
+        ascending=False,
+        limit=limit,
+    )
+
+    for row in rows:
+        row["tipo_checklist"] = tipo
+        row["tabela_checklist"] = tabela
+
+    return rows
+
+
+def buscar_check_operador_auxiliar_por_id(
+    id_check,
+    tipo_checklist="",
+    codigo_maquina="",
+    tipo_maquina="",
+    id_filial="",
+):
+    tipo, tabela = _tabela_check_operador_auxiliar(
+        tipo_checklist=tipo_checklist,
+        codigo_maquina=codigo_maquina,
+        tipo_maquina=tipo_maquina,
+    )
+
+    filtros = {"id": id_check}
+    if possui_filial(id_filial):
+        filtros["id_filial"] = id_filial
+
+    row = selecionar_um(tabela, filtros=filtros)
+    if row:
+        row["tipo_checklist"] = tipo
+        row["tabela_checklist"] = tabela
+    return row
+
+
+def salvar_check_operador_auxiliar(
+    tipo_checklist,
+    dados_check,
+    tipo_maquina="",
+):
+    """
+    Salva o checklist diário na tabela correspondente.
+
+    Não interfere no fluxo existente de check_empi.
+    A máquina é marcada como "Em uso" quando encontrada no cadastro.
+    """
+    dados = dict(dados_check or {})
+    codigo = (
+        dados.get("codigo_maquina")
+        or dados.get("codigoMaquina")
+        or ""
+    )
+
+    tipo, tabela = _tabela_check_operador_auxiliar(
+        tipo_checklist=tipo_checklist,
+        codigo_maquina=codigo,
+        tipo_maquina=tipo_maquina,
+    )
+
+    if not str(codigo or "").strip():
+        raise ValueError("Informe codigo_maquina para salvar o checklist.")
+    if not str(dados.get("operador") or "").strip():
+        raise ValueError("Informe operador para salvar o checklist.")
+
+    # Compatibilidade com payload camelCase.
+    dados["codigo_maquina"] = codigo
+    dados.pop("codigoMaquina", None)
+
+    if "idMaquina" in dados and "id_maquina" not in dados:
+        dados["id_maquina"] = dados.pop("idMaquina")
+    if "idFilial" in dados and "id_filial" not in dados:
+        dados["id_filial"] = dados.pop("idFilial")
+    if "statusCheck" in dados and "status_check" not in dados:
+        dados["status_check"] = dados.pop("statusCheck")
+    if "resultadoCheck" in dados and "resultado_check" not in dados:
+        dados["resultado_check"] = dados.pop("resultadoCheck")
+    if "observacaoGeral" in dados and "observacao_geral" not in dados:
+        dados["observacao_geral"] = dados.pop("observacaoGeral")
+    if "horimetroInicial" in dados and "horimetro_inicial" not in dados:
+        dados["horimetro_inicial"] = dados.pop("horimetroInicial")
+    if "cargaInicial" in dados and "carga_inicial" not in dados:
+        dados["carga_inicial"] = dados.pop("cargaInicial")
+
+    dados.setdefault("status_check", "ABERTO")
+
+    agora = agora_mysql()
+
+    with conectar() as conn:
+        try:
+            check = inserir(tabela, dados, conn=conn)
+
+            id_filial = dados.get("id_filial")
+            maquina = None
+            with conn.cursor() as cur:
+                sql = """
+                    SELECT *
+                    FROM `check_maquinas`.`maquinas`
+                    WHERE CONVERT(`codigo` USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                        = CONVERT(%s USING utf8mb4) COLLATE utf8mb4_unicode_ci
+                """
+                params = [codigo]
+                if possui_filial(id_filial):
+                    sql += " AND `id_filial` = %s"
+                    params.append(id_filial)
+                sql += " ORDER BY `id` DESC LIMIT 1"
+                cur.execute(sql, params)
+                maquina = cur.fetchone()
+
+            if maquina:
+                dados_maquina = {
+                    "ativo": "Em uso",
+                }
+
+                horimetro = dados.get("horimetro_inicial")
+                if horimetro not in [None, ""]:
+                    dados_maquina["horimetro_atual"] = horimetro
+                    dados_maquina["ultimo_reg_horimetro"] = agora
+
+                carga = dados.get("carga_inicial")
+                if carga not in [None, ""]:
+                    dados_maquina["carga_atual"] = carga
+
+                filtros_maquina = {"codigo": maquina.get("codigo")}
+                if possui_filial(maquina.get("id_filial")):
+                    filtros_maquina["id_filial"] = maquina.get("id_filial")
+
+                atualizar(
+                    "maquinas",
+                    dados_maquina,
+                    filtros_maquina,
+                    conn=conn,
+                )
+
+            conn.commit()
+
+            return {
+                "tipo_checklist": tipo,
+                "tabela_checklist": tabela,
+                "check": check,
+                "id_check": check.get("id"),
+            }
+        except Exception:
+            conn.rollback()
+            raise
+
+
+def finalizar_check_operador_auxiliar(
+    tipo_checklist,
+    id_check,
+    codigo_maquina,
+    id_filial="",
+    tipo_maquina="",
+    horimetro_final=None,
+    carga_final=None,
+    ultima_carga_realizada=None,
+):
+    """
+    Finaliza um checklist auxiliar.
+
+    Diferente do check_empi, horímetro NÃO é obrigatório:
+    - PLT-MANUAL não usa horímetro;
+    - PLT-ELETRICA e LIMP podem usar quando o equipamento possuir.
+    """
+    tipo, tabela = _tabela_check_operador_auxiliar(
+        tipo_checklist=tipo_checklist,
+        codigo_maquina=codigo_maquina,
+        tipo_maquina=tipo_maquina,
+    )
+
+    if id_check in [None, ""]:
+        raise ValueError("Informe idCheck para finalizar o checklist.")
+    if not str(codigo_maquina or "").strip():
+        raise ValueError("Informe codigoMaquina para finalizar o checklist.")
+
+    agora = agora_mysql()
+
+    dados_check = {
+        "status_check": "FINALIZADO",
+        "data_finalizacao": agora,
+        "atualizado_em": agora,
+    }
+
+    cfg = cfg_tabela(tabela)
+    colunas = set(cfg["columns"])
+
+    if "horimetro_final" in colunas and horimetro_final not in [None, ""]:
+        dados_check["horimetro_final"] = horimetro_final
+    if "carga_final" in colunas and carga_final not in [None, ""]:
+        dados_check["carga_final"] = carga_final
+    if (
+        "ultima_carga_realizada" in colunas
+        and ultima_carga_realizada not in [None, ""]
+    ):
+        dados_check["ultima_carga_realizada"] = ultima_carga_realizada
+
+    with conectar() as conn:
+        try:
+            filtros_check = {"id": id_check}
+            if possui_filial(id_filial):
+                filtros_check["id_filial"] = id_filial
+
+            atualizado = atualizar(
+                tabela,
+                dados_check,
+                filtros_check,
+                conn=conn,
+            )
+
+            # A existência de qualquer pendência aberta para o código da máquina
+            # continua impedindo liberação automática, independentemente do tipo.
+            with conn.cursor() as cur:
+                sql_pend = """
+                    SELECT `id`
+                    FROM `check_maquinas`.`check_empi_pendencias`
+                    WHERE CONVERT(`empilhadeira` USING utf8mb4)
+                              COLLATE utf8mb4_unicode_ci
+                          = CONVERT(%s USING utf8mb4)
+                              COLLATE utf8mb4_unicode_ci
+                      AND `status_pendencia` IN ('ABERTA', 'EM_ANALISE')
+                      AND (`resolvido` = 0 OR `resolvido` IS NULL)
+                """
+                params_pend = [codigo_maquina]
+                if possui_filial(id_filial):
+                    sql_pend += " AND `id_filial` = %s"
+                    params_pend.append(id_filial)
+                sql_pend += " LIMIT 1"
+                cur.execute(sql_pend, params_pend)
+                possui_pendencia = cur.fetchone() is not None
+
+            dados_maquina = {
+                "ativo": "Manutenção" if possui_pendencia else "Liberado",
+            }
+            if horimetro_final not in [None, ""]:
+                dados_maquina["horimetro_atual"] = horimetro_final
+                dados_maquina["ultimo_reg_horimetro"] = agora
+            if carga_final not in [None, ""]:
+                dados_maquina["carga_atual"] = carga_final
+            if ultima_carga_realizada not in [None, ""]:
+                dados_maquina["ultima_carga_realizada"] = normalizar_data_mysql(
+                    ultima_carga_realizada
+                )
+
+            filtros_maquina = {"codigo": codigo_maquina}
+            if possui_filial(id_filial):
+                filtros_maquina["id_filial"] = id_filial
+
+            resultado_maquina = atualizar(
+                "maquinas",
+                dados_maquina,
+                filtros_maquina,
+                conn=conn,
+            )
+
+            conn.commit()
+
+            return {
+                "tipo_checklist": tipo,
+                "tabela_checklist": tabela,
+                "check_finalizado": True,
+                "check": atualizado,
+                "maquina": resultado_maquina,
+                "maquina_liberada": not possui_pendencia,
+                "possui_pendencia_manutencao": possui_pendencia,
+            }
+        except Exception:
+            conn.rollback()
+            raise
 
 
 def buscar_pendencias(id_filial=""):
@@ -4133,6 +4665,32 @@ class handler(BaseHTTPRequestHandler):
             if acao == "buscarChecks":
                 return responder(self, 200, {"sucesso": True, "dados": buscar_checks(query_param(query, "idFilial", ""), query_param(query, "statusCheck", ""))})
 
+            if acao in ["buscarChecksOperadorAuxiliar", "buscarChecksAuxiliares"]:
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": buscar_checks_operador_auxiliar(
+                        tipo_checklist=query_param(query, "tipoChecklist", ""),
+                        codigo_maquina=query_param(query, "codigoMaquina", ""),
+                        tipo_maquina=query_param(query, "tipoMaquina", ""),
+                        id_filial=query_param(query, "idFilial", ""),
+                        status_check=query_param(query, "statusCheck", ""),
+                        operador=query_param(query, "operador", ""),
+                        limit=query_param(query, "limit", "500"),
+                    ),
+                })
+
+            if acao == "buscarCheckOperadorAuxiliarPorId":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": buscar_check_operador_auxiliar_por_id(
+                        id_check=query_param(query, "idCheck", ""),
+                        tipo_checklist=query_param(query, "tipoChecklist", ""),
+                        codigo_maquina=query_param(query, "codigoMaquina", ""),
+                        tipo_maquina=query_param(query, "tipoMaquina", ""),
+                        id_filial=query_param(query, "idFilial", ""),
+                    ),
+                })
+
             if acao == "buscarPendencias":
                 return responder(self, 200, {"sucesso": True, "dados": buscar_pendencias(query_param(query, "idFilial", ""))})
 
@@ -4377,6 +4935,33 @@ class handler(BaseHTTPRequestHandler):
                     "dados": salvar_check(dados_check),
                 })
 
+
+            if acao in [
+                "salvarCheckOperadorAuxiliar",
+                "salvarCheckAuxiliar",
+                "salvarCheckPaleteira",
+                "salvarCheckTranspaleteira",
+                "salvarCheckLimpeza",
+            ]:
+                dados_check = body.get("check") or body.get("dados") or {}
+
+                tipo_checklist = body.get("tipoChecklist", "")
+                if acao == "salvarCheckPaleteira":
+                    tipo_checklist = "PLT-MANUAL"
+                elif acao == "salvarCheckTranspaleteira":
+                    tipo_checklist = "PLT-ELETRICA"
+                elif acao == "salvarCheckLimpeza":
+                    tipo_checklist = "LIMP"
+
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": salvar_check_operador_auxiliar(
+                        tipo_checklist=tipo_checklist,
+                        dados_check=dados_check,
+                        tipo_maquina=body.get("tipoMaquina", ""),
+                    ),
+                })
+
             if acao == "salvarCheckComPendencias":
                 dados_check = body.get("check") or body.get("dados") or {}
                 pendencias = body.get("pendencias") or []
@@ -4542,6 +5127,31 @@ class handler(BaseHTTPRequestHandler):
                     carga_final=body.get("cargaFinal", body.get("carga_atual")),
                     ultima_carga_realizada=body.get("ultimaCargaRealizada", body.get("ultima_carga_realizada")),
                 )})
+
+            if acao in [
+                "finalizarCheckOperadorAuxiliar",
+                "finalizarCheckAuxiliar",
+                "finalizarTurnoAuxiliar",
+            ]:
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": finalizar_check_operador_auxiliar(
+                        tipo_checklist=body.get("tipoChecklist", ""),
+                        id_check=body.get("idCheck"),
+                        codigo_maquina=body.get("codigoMaquina", ""),
+                        id_filial=body.get("idFilial", ""),
+                        tipo_maquina=body.get("tipoMaquina", ""),
+                        horimetro_final=body.get("horimetroFinal"),
+                        carga_final=body.get(
+                            "cargaFinal",
+                            body.get("carga_final"),
+                        ),
+                        ultima_carga_realizada=body.get(
+                            "ultimaCargaRealizada",
+                            body.get("ultima_carga_realizada"),
+                        ),
+                    ),
+                })
 
             if acao == "atualizarPendenciaAnexos":
                 return responder(self, 200, {"sucesso": True, "dados": atualizar_pendencia_anexos(body.get("idPendencia"), body.get("anexos", []))})
