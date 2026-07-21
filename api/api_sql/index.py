@@ -1377,45 +1377,57 @@ def identificar_tipo_check_operador(
     tipo_maquina="",
 ):
     """
-    Resolve qual tabela de checklist diário deve ser usada.
+    Resolve qual checklist diário deve ser usado.
 
-    Padrões oficiais adotados:
-      PLT-MANUAL   -> check_paleteira
-      PLT-ELETRICA -> check_transpaleteira
-      LIMP         -> check_limpeza
+    REGRA:
+    - codigo_maquina é somente o número/código de frota e NÃO participa
+      da classificação.
+    - quando tipo_checklist vier explícito do app, ele é respeitado;
+    - caso contrário, a classificação é feita somente por tipo_maquina.
 
-    Também aceita nomes descritivos para manter flexibilidade com o cadastro
-    de máquinas existente.
+    Mapeamento:
+      EMPILHADEIRA   -> fluxo legado check_empi (não entra aqui)
+      TRANSPALETEIRA -> PLT_ELETRICA / check_transpaleteira
+      PALETEIRA      -> PLT_MANUAL / check_paleteira
+      AUXILIAR       -> LIMPEZA / check_limpeza
     """
-    valores = [
-        _normalizar_texto_auxiliar(tipo_checklist),
-        _normalizar_texto_auxiliar(codigo_maquina),
-        _normalizar_texto_auxiliar(tipo_maquina),
-    ]
-    texto = "|".join(v for v in valores if v)
+    tipo_explicitado = _normalizar_texto_auxiliar(tipo_checklist)
+    tipo_cadastro = _normalizar_texto_auxiliar(tipo_maquina)
 
-    if (
-        "PLT-MANUAL" in texto
-        or "PALETEIRA-MANUAL" in texto
-        or texto == "PALETEIRA"
-    ):
+    # Tipo explícito enviado pela aplicação.
+    if tipo_explicitado in {
+        "PLT-MANUAL",
+        "PALETEIRA",
+        "PALETEIRA-MANUAL",
+    }:
         return "PLT_MANUAL"
 
-    if (
-        "PLT-ELETRICA" in texto
-        or "PALETEIRA-ELETRICA" in texto
-        or "TRANSPALETEIRA" in texto
-        or "TRANSPALETEIRA-ELETRICA" in texto
-    ):
+    if tipo_explicitado in {
+        "PLT-ELETRICA",
+        "PLT-ELETRICA",
+        "TRANSPALETEIRA",
+        "TRANSPALETEIRA-ELETRICA",
+        "PALETEIRA-ELETRICA",
+    }:
         return "PLT_ELETRICA"
 
-    if (
-        "LIMP" in texto
-        or "LIMPEZA" in texto
-        or "LAVADORA" in texto
-        or "MAQUINA-DE-LIMPEZA" in texto
-        or "MAQUINA-LIMPEZA" in texto
-    ):
+    if tipo_explicitado in {
+        "LIMP",
+        "AUXILIAR",
+        "LIMPEZA",
+        "LAVADORA",
+        "MAQUINA-DE-LIMPEZA",
+    }:
+        return "LIMPEZA"
+
+    # Fallback permitido: somente o campo tipo_maquina do cadastro.
+    if tipo_cadastro == "PALETEIRA":
+        return "PLT_MANUAL"
+
+    if tipo_cadastro == "TRANSPALETEIRA":
+        return "PLT_ELETRICA"
+
+    if tipo_cadastro == "AUXILIAR":
         return "LIMPEZA"
 
     return ""
