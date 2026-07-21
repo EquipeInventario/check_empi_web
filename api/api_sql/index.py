@@ -349,6 +349,7 @@ TABLES = {
         "columns": [
             "id",
             "id_check",
+            "origem_check",
             "empilhadeira",
             "categoria",
             "item",
@@ -761,6 +762,7 @@ TABLES = {
         "bool_columns": [],
         "json_columns": [],
     },
+
     "manutencao_anexos": {
         "schema": "check_maquinas",
         "table": "manutencao_anexos",
@@ -788,6 +790,7 @@ TABLES = {
 ANEXOS_SELECT = [
     "id",
     "id_check",
+    "origem_check",
     "empilhadeira",
     "categoria",
     "item",
@@ -1822,11 +1825,31 @@ def buscar_maquina_por_codigo(codigo_maquina, id_filial=""):
 
 
 def buscar_anexos_do_check(id_check):
-    return selecionar("check_empi_anexos", filtros={"id_check": id_check}, order_by="criado_em", ascending=False, colunas=ANEXOS_SELECT)
+    # Rota legada: sempre se refere ao checklist de empilhadeira.
+    return selecionar(
+        "check_empi_anexos",
+        filtros={
+            "id_check": id_check,
+            "origem_check": "check_empi",
+        },
+        order_by="criado_em",
+        ascending=False,
+        colunas=ANEXOS_SELECT,
+    )
 
 
 def buscar_anexos_por_empilhadeira(empilhadeira):
-    return selecionar("check_empi_anexos", filtros={"empilhadeira": empilhadeira}, order_by="criado_em", ascending=False, colunas=ANEXOS_SELECT)
+    # Rota legada: preserva somente anexos originados de check_empi.
+    return selecionar(
+        "check_empi_anexos",
+        filtros={
+            "empilhadeira": empilhadeira,
+            "origem_check": "check_empi",
+        },
+        order_by="criado_em",
+        ascending=False,
+        colunas=ANEXOS_SELECT,
+    )
 
 
 def carregar_base_operacional(id_filial=""):
@@ -1893,6 +1916,120 @@ def carregar_detalhes_manutencao(id_pendencia=None, pendencia_base=None, id_fili
         "pendenciasDaMaquina": pendencias_maquina,
         "maquina": maquina,
     }
+
+
+# ============================================================
+# ANEXOS GERAIS DOS CHECKLISTS DO OPERADOR
+#
+# Usa exclusivamente a tabela existente check_empi_anexos.
+# A coluna origem_check diferencia a tabela de checklist:
+#   check_empi
+#   check_paleteira
+#   check_transpaleteira
+#   check_limpeza
+# ============================================================
+
+ORIGENS_CHECK_OPERADOR = {
+    "check_empi",
+    "check_paleteira",
+    "check_transpaleteira",
+    "check_limpeza",
+}
+
+
+def buscar_anexos_operador(origem_tabela, origem_id):
+    origem = _valor_texto(origem_tabela)
+    if origem not in ORIGENS_CHECK_OPERADOR:
+        raise ValueError("origemTabela inválida para buscar anexos.")
+    if origem_id in [None, ""]:
+        raise ValueError("Informe origemId para buscar os anexos.")
+
+    return selecionar(
+        "check_empi_anexos",
+        filtros={
+            "origem_check": origem,
+            "id_check": origem_id,
+        },
+        order_by="criado_em",
+        ascending=True,
+        limit=2000,
+        colunas=ANEXOS_SELECT,
+    )
+
+
+def inserir_anexo_operador(dados):
+    """
+    Insere mídia de qualquer checklist do operador em check_empi_anexos.
+
+    Aceita tanto o payload novo:
+      origem_check, id_check, empilhadeira
+
+    quanto o payload da versão intermediária anterior:
+      origem_tabela, origem_id, codigo_maquina
+
+    Isso evita quebra durante a transição entre versões do app.
+    """
+    entrada = dict(dados or {})
+
+    origem = _valor_texto(
+        entrada.get("origem_check")
+        or entrada.get("origem_tabela")
+    )
+    id_check = (
+        entrada.get("id_check")
+        if entrada.get("id_check") not in [None, ""]
+        else entrada.get("origem_id")
+    )
+    codigo = _valor_texto(
+        entrada.get("empilhadeira")
+        or entrada.get("codigo_maquina")
+    )
+
+    if origem not in ORIGENS_CHECK_OPERADOR:
+        raise ValueError("origem_check inválida para anexo de checklist.")
+    if id_check in [None, ""]:
+        raise ValueError("Informe id_check para o anexo.")
+    if not codigo:
+        raise ValueError("Informe o código/número de frota da máquina.")
+
+    registro = {
+        "id_check": id_check,
+        "origem_check": origem,
+        "empilhadeira": codigo,
+        "categoria": entrada.get("categoria") or "CHECKLIST",
+        "item": entrada.get("item") or "MIDIA_GERAL",
+        "caminho_arquivo": entrada.get("caminho_arquivo"),
+        "url_publica": entrada.get("url_publica"),
+        "tamanho_bytes": entrada.get("tamanho_bytes"),
+        "criado_por": entrada.get("criado_por"),
+        "criado_em": entrada.get("criado_em") or agora_mysql(),
+        "storage_origem": entrada.get("storage_origem"),
+        "container_azure": entrada.get("container_azure"),
+        "blob_azure": entrada.get("blob_azure"),
+        "url_azure": entrada.get("url_azure"),
+    }
+
+    # Como o upload novo já vai direto ao Azure, marca o registro como
+    # armazenado/migrado quando houver referência Azure.
+    if registro.get("url_azure") or registro.get("blob_azure"):
+        registro["migrado_azure"] = 1
+        registro["migrado_em"] = agora_mysql()
+
+    # Remove apenas chaves totalmente ausentes; mantém zero em tamanho_bytes.
+    registro = {
+        chave: valor
+        for chave, valor in registro.items()
+        if valor is not None
+    }
+
+    return inserir("check_empi_anexos", registro)
+
+
+def inserir_anexo_check_empi(dados):
+    """Compatibilidade com o fluxo legado de anexos da empilhadeira."""
+    registro = dict(dados or {})
+    registro["origem_check"] = "check_empi"
+    return inserir("check_empi_anexos", registro)
 
 
 # ============================================================
@@ -4730,6 +4867,15 @@ class handler(BaseHTTPRequestHandler):
             if acao == "buscarMaquinaPorCodigo":
                 return responder(self, 200, {"sucesso": True, "dados": buscar_maquina_por_codigo(query_param(query, "codigoMaquina"), query_param(query, "idFilial", ""))})
 
+            if acao == "buscarAnexosOperador":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": buscar_anexos_operador(
+                        query_param(query, "origemTabela", ""),
+                        query_param(query, "origemId", ""),
+                    ),
+                })
+
             if acao == "buscarAnexosDoCheck":
                 return responder(self, 200, {"sucesso": True, "dados": buscar_anexos_do_check(query_param(query, "idCheck"))})
 
@@ -4936,8 +5082,17 @@ class handler(BaseHTTPRequestHandler):
             if acao == "inserirPendencias":
                 return responder(self, 200, {"sucesso": True, "dados": inserir_varios("check_empi_pendencias", body.get("dados", body.get("pendencias", [])))})
 
+            if acao == "inserirAnexoOperador":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": inserir_anexo_operador(body.get("dados", body)),
+                })
+
             if acao == "inserirAnexoCheck":
-                return responder(self, 200, {"sucesso": True, "dados": inserir("check_empi_anexos", body.get("dados", body))})
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": inserir_anexo_check_empi(body.get("dados", body)),
+                })
 
             if acao == "salvarCheck":
                 dados_check = body.get("check") or body.get("dados") or {}
