@@ -1,32 +1,32 @@
 {
-    "name": "Gestão de Maquinas MCB",
-    "short_name": "Gestão MCB",
+    "name": "Check List Maquinas MCB",
+    "short_name": "Check MCB",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#07120E",
-    "theme_color": "#07120E",
-    "description": "Sistema de gestão operacional de máquinas MCB.",
+    "background_color": "#15371F",
+    "theme_color": "#15371F",
+    "description": "Check list operacional de maquinas Master Cargas Brasil.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
         {
-            "src": "icons/Icon-192.png?v=mcb2",
+            "src": "icons/Icon-192.png",
             "sizes": "192x192",
             "type": "image/png"
         },
         {
-            "src": "icons/Icon-512.png?v=mcb2",
+            "src": "icons/Icon-512.png",
             "sizes": "512x512",
             "type": "image/png"
         },
         {
-            "src": "icons/Icon-maskable-192.png?v=mcb2",
+            "src": "icons/Icon-maskable-192.png",
             "sizes": "192x192",
             "type": "image/png",
             "purpose": "maskable"
         },
         {
-            "src": "icons/Icon-maskable-512.png?v=mcb2",
+            "src": "icons/Icon-maskable-512.png",
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "maskable"
