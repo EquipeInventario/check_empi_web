@@ -762,7 +762,6 @@ TABLES = {
         "bool_columns": [],
         "json_columns": [],
     },
-
     "manutencao_anexos": {
         "schema": "check_maquinas",
         "table": "manutencao_anexos",
@@ -790,7 +789,6 @@ TABLES = {
 ANEXOS_SELECT = [
     "id",
     "id_check",
-    "origem_check",
     "empilhadeira",
     "categoria",
     "item",
@@ -1346,8 +1344,6 @@ def buscar_checks(id_filial="", status_check=""):
         filtros["status_check"] = status_check
     return selecionar("check_empi", filtros=filtros, order_by="data_abertura", ascending=False)
 
-
-
 # ============================================================
 # CHECKLISTS DO OPERADOR - MÁQUINAS AUXILIARES
 # ============================================================
@@ -1825,31 +1821,11 @@ def buscar_maquina_por_codigo(codigo_maquina, id_filial=""):
 
 
 def buscar_anexos_do_check(id_check):
-    # Rota legada: sempre se refere ao checklist de empilhadeira.
-    return selecionar(
-        "check_empi_anexos",
-        filtros={
-            "id_check": id_check,
-            "origem_check": "check_empi",
-        },
-        order_by="criado_em",
-        ascending=False,
-        colunas=ANEXOS_SELECT,
-    )
+    return selecionar("check_empi_anexos", filtros={"id_check": id_check}, order_by="criado_em", ascending=False, colunas=ANEXOS_SELECT)
 
 
 def buscar_anexos_por_empilhadeira(empilhadeira):
-    # Rota legada: preserva somente anexos originados de check_empi.
-    return selecionar(
-        "check_empi_anexos",
-        filtros={
-            "empilhadeira": empilhadeira,
-            "origem_check": "check_empi",
-        },
-        order_by="criado_em",
-        ascending=False,
-        colunas=ANEXOS_SELECT,
-    )
+    return selecionar("check_empi_anexos", filtros={"empilhadeira": empilhadeira}, order_by="criado_em", ascending=False, colunas=ANEXOS_SELECT)
 
 
 def carregar_base_operacional(id_filial=""):
@@ -1953,7 +1929,6 @@ def buscar_anexos_operador(origem_tabela, origem_id):
         order_by="criado_em",
         ascending=True,
         limit=2000,
-        colunas=ANEXOS_SELECT,
     )
 
 
@@ -2023,14 +1998,6 @@ def inserir_anexo_operador(dados):
     }
 
     return inserir("check_empi_anexos", registro)
-
-
-def inserir_anexo_check_empi(dados):
-    """Compatibilidade com o fluxo legado de anexos da empilhadeira."""
-    registro = dict(dados or {})
-    registro["origem_check"] = "check_empi"
-    return inserir("check_empi_anexos", registro)
-
 
 # ============================================================
 # AÇÕES ESPECÍFICAS DOS APPS
@@ -4764,13 +4731,19 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        # Health público e sem banco: confirma apenas que a função Python subiu.
+        query = parse_qs(urlparse(self.path).query)
+        acao = query_param(query, "acao", "ping")
+        if acao == "health":
+            return responder(self, 200, {
+                "sucesso": True,
+                "dados": {"api": "online", "banco": "nao_testado"},
+            })
+
         if not validar_token(self):
             return responder(self, 401, {"sucesso": False, "erro": "Token inválido ou ausente."})
 
         try:
-            query = parse_qs(urlparse(self.path).query)
-            acao = query_param(query, "acao", "ping")
-
             if acao in ["ping", "testeConexao"]:
                 return responder(self, 200, {"sucesso": True, "dados": self._teste_conexao()})
 
@@ -5089,10 +5062,7 @@ class handler(BaseHTTPRequestHandler):
                 })
 
             if acao == "inserirAnexoCheck":
-                return responder(self, 200, {
-                    "sucesso": True,
-                    "dados": inserir_anexo_check_empi(body.get("dados", body)),
-                })
+                return responder(self, 200, {"sucesso": True, "dados": inserir("check_empi_anexos", body.get("dados", body))})
 
             if acao == "salvarCheck":
                 dados_check = body.get("check") or body.get("dados") or {}
@@ -5101,7 +5071,6 @@ class handler(BaseHTTPRequestHandler):
                     "sucesso": True,
                     "dados": salvar_check(dados_check),
                 })
-
 
             if acao in [
                 "salvarCheckOperadorAuxiliar",
