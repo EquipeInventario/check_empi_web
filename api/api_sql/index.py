@@ -2393,11 +2393,21 @@ _PREVENTIVA_STATUS_FECHADOS = {
 }
 
 
-def _texto_preventiva(valor, limite=45):
+def _texto_preventiva(valor):
+    """Normaliza textos do histórico preventivo sem truncar conteúdo.
+
+    A API antiga limitava todos os textos preventivos a 45 caracteres,
+    mesmo quando as colunas do banco aceitavam conteúdo maior. Isso fazia
+    descrições, peças e observações serem gravadas incompletas.
+
+    A partir desta versão, o texto é preservado integralmente. Qualquer
+    limite válido deve ser responsabilidade do schema real da coluna,
+    e não de um corte artificial aplicado pela API.
+    """
     texto = _valor_texto(valor)
     if not texto:
         return None
-    return texto[:limite]
+    return texto
 
 
 def _status_preventiva(valor, padrao="PROGRAMADA"):
