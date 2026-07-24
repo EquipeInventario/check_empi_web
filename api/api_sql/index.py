@@ -3545,6 +3545,85 @@ def buscar_operador_por_nome(nome, filial="", sincronizar=True):
 
 
 
+def resolver_filial_operador(filial):
+    """
+    Resolve o escopo operacional usando diretamente o texto da coluna
+    operador.filial.
+
+    Exemplo:
+      operador.filial = CROWN
+
+    O operador selecionado NÃO precisa possuir id_filial.
+    A API procura um vínculo já existente para a mesma filial e retorna
+    o id operacional usado pelas tabelas de máquinas/checklists.
+
+    Nenhum dado é alterado no banco.
+    """
+    filial_texto = _valor_texto(filial)
+    if not filial_texto:
+        return None
+
+    # Fonte principal: a própria tabela operador.
+    # Ex.: já existe registro CROWN com id_filial operacional preenchido.
+    sql = """
+        SELECT
+            `id_filial`,
+            `filial`
+        FROM `check_maquinas`.`operador`
+        WHERE CONVERT(UPPER(TRIM(COALESCE(`filial`, ''))) USING utf8mb4)
+                  COLLATE utf8mb4_unicode_ci
+              =
+              CONVERT(UPPER(%s) USING utf8mb4)
+                  COLLATE utf8mb4_unicode_ci
+          AND `id_filial` IS NOT NULL
+        ORDER BY `id` ASC
+        LIMIT 1
+    """
+
+    with conectar() as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, [filial_texto])
+            row = cur.fetchone()
+
+            if row:
+                return {
+                    "filial": filial_texto,
+                    "id_filial": row.get("id_filial"),
+                }
+
+            # Fallback somente de leitura: usuários web da mesma filial.
+            cur.execute(
+                """
+                SELECT
+                    `id_filial`,
+                    `filial`,
+                    `cidade`,
+                    `estado`
+                FROM `check_maquinas`.`usuarios_web_check`
+                WHERE CONVERT(UPPER(TRIM(COALESCE(`filial`, ''))) USING utf8mb4)
+                          COLLATE utf8mb4_unicode_ci
+                      =
+                      CONVERT(UPPER(%s) USING utf8mb4)
+                          COLLATE utf8mb4_unicode_ci
+                  AND `id_filial` IS NOT NULL
+                ORDER BY `id` ASC
+                LIMIT 1
+                """,
+                [filial_texto],
+            )
+            row = cur.fetchone()
+
+    if not row:
+        return None
+
+    return {
+        "filial": filial_texto,
+        "id_filial": row.get("id_filial"),
+        "cidade": row.get("cidade"),
+        "estado": row.get("estado"),
+    }
+
+
 
 # ============================================================
 # CHECKLIST TÉCNICO DE LIBERAÇÃO POR TIPO DE EQUIPAMENTO
@@ -4905,6 +4984,14 @@ class handler(BaseHTTPRequestHandler):
                     ),
                 })
 
+            if acao == "resolverFilialOperador":
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": resolver_filial_operador(
+                        query_param(query, "filial", "")
+                    ),
+                })
+
             if acao == "sincronizarOperadoresRH":
                 return responder(self, 200, {
                     "sucesso": True,
@@ -5157,6 +5244,15 @@ class handler(BaseHTTPRequestHandler):
                         body.get("nome", "") or dados.get("nome", ""),
                         filial=body.get("filial", "") or dados.get("filial", ""),
                         sincronizar=body.get("sincronizar", dados.get("sincronizar", True)) is not False,
+                    ),
+                })
+
+            if acao == "resolverFilialOperador":
+                dados = body.get("dados") if isinstance(body.get("dados"), dict) else {}
+                return responder(self, 200, {
+                    "sucesso": True,
+                    "dados": resolver_filial_operador(
+                        body.get("filial", "") or dados.get("filial", "")
                     ),
                 })
 
