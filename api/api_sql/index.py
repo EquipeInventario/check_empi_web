@@ -1523,12 +1523,16 @@ def salvar_check_operador_auxiliar(
     tipo_checklist,
     dados_check,
     tipo_maquina="",
+    pendencias=None,
 ):
     """
-    Salva o checklist diário na tabela correspondente.
+    Salva o checklist diário auxiliar e suas pendências na mesma transação.
 
-    Não interfere no fluxo existente de check_empi.
-    A máquina é marcada como "Em uso" quando encontrada no cadastro.
+    Mantém o mesmo padrão do fluxo legado de empilhadeira:
+    - salva o check na tabela correspondente;
+    - vincula cada NÃO OK ao id_check recém-criado;
+    - grava as pendências em check_empi_pendencias;
+    - marca a máquina como "Em Uso/Precisa Manutenção" quando necessário.
     """
     dados = dict(dados_check or {})
     codigo = (
@@ -1547,6 +1551,11 @@ def salvar_check_operador_auxiliar(
         raise ValueError("Informe codigo_maquina para salvar o checklist.")
     if not str(dados.get("operador") or "").strip():
         raise ValueError("Informe operador para salvar o checklist.")
+
+    if pendencias is None:
+        pendencias = []
+    if not isinstance(pendencias, list):
+        raise ValueError("Lista de pendências do checklist auxiliar inválida.")
 
     # Compatibilidade com payload camelCase.
     dados["codigo_maquina"] = codigo
@@ -1574,8 +1583,25 @@ def salvar_check_operador_auxiliar(
     with conectar() as conn:
         try:
             check = inserir(tabela, dados, conn=conn)
-
+            id_check = check.get("id")
             id_filial = dados.get("id_filial")
+
+            # Mesmo padrão do salvar_check_com_pendencias da empilhadeira:
+            # cada item NÃO OK vira um registro em check_empi_pendencias
+            # vinculado ao id do checklist que acabou de ser criado.
+            pendencias_salvas = []
+            for pendencia in pendencias:
+                item = dict(pendencia or {})
+                item["id_check"] = id_check
+                item["empilhadeira"] = codigo
+                if possui_filial(id_filial):
+                    item["id_filial"] = id_filial
+                item.setdefault("status_pendencia", "ABERTA")
+                item.setdefault("criado_em", agora)
+                pendencias_salvas.append(
+                    inserir("check_empi_pendencias", item, conn=conn)
+                )
+
             maquina = None
             with conn.cursor() as cur:
                 sql = """
@@ -1594,7 +1620,11 @@ def salvar_check_operador_auxiliar(
 
             if maquina:
                 dados_maquina = {
-                    "ativo": "Em uso",
+                    "ativo": (
+                        "Em Uso/Precisa Manutenção"
+                        if pendencias_salvas
+                        else "Em uso"
+                    ),
                 }
 
                 horimetro = dados.get("horimetro_inicial")
@@ -1623,7 +1653,8 @@ def salvar_check_operador_auxiliar(
                 "tipo_checklist": tipo,
                 "tabela_checklist": tabela,
                 "check": check,
-                "id_check": check.get("id"),
+                "id_check": id_check,
+                "pendencias": pendencias_salvas,
             }
         except Exception:
             conn.rollback()
@@ -1901,12 +1932,45 @@ def carregar_detalhes_manutencao(id_pendencia=None, pendencia_base=None, id_fili
 
     id_check = pendencia.get("id_check")
     codigo = str(pendencia.get("empilhadeira") or "")
-
-    check = buscar_check_por_id(id_check, id_filial=id_filial) if id_check else None
-    pendencias_check = buscar_pendencias_do_check(id_check, id_filial=id_filial) if id_check else []
-    anexos_check = buscar_anexos_do_check(id_check) if id_check else []
-    pendencias_maquina = buscar_pendencias_da_maquina(codigo, id_filial=id_filial) if codigo else []
     maquina = buscar_maquina_por_codigo(codigo, id_filial=id_filial) if codigo else None
+
+    # O id_check pode existir simultaneamente em tabelas diferentes.
+    # A tabela correta é inferida pelo tipo_maquina da máquina.
+    tipo_maquina = _valor_texto((maquina or {}).get("tipo_maquina")).upper()
+    check = None
+    tabela_check = "check_empi"
+
+    if id_check:
+        if tipo_maquina in {"PALETEIRA", "TRANSPALETEIRA", "AUXILIAR"}:
+            check = buscar_check_operador_auxiliar_por_id(
+                id_check=id_check,
+                tipo_maquina=tipo_maquina,
+                codigo_maquina=codigo,
+                id_filial=id_filial,
+            )
+            if check:
+                tabela_check = check.get("tabela_checklist") or tabela_check
+        else:
+            check = buscar_check_por_id(id_check, id_filial=id_filial)
+            if check:
+                check = dict(check)
+                check["tipo_checklist"] = "EMPILHADEIRA"
+                check["tabela_checklist"] = "check_empi"
+
+    pendencias_maquina = buscar_pendencias_da_maquina(codigo, id_filial=id_filial) if codigo else []
+    pendencias_check = [
+        p for p in pendencias_maquina
+        if str(p.get("id_check") or "") == str(id_check or "")
+    ]
+
+    if id_check:
+        anexos_check = (
+            buscar_anexos_do_check(id_check)
+            if tabela_check == "check_empi"
+            else buscar_anexos_operador(tabela_check, id_check)
+        )
+    else:
+        anexos_check = []
 
     return {
         "pendencia": pendencia,
@@ -5168,6 +5232,7 @@ class handler(BaseHTTPRequestHandler):
                         tipo_checklist=tipo_checklist,
                         dados_check=dados_check,
                         tipo_maquina=body.get("tipoMaquina", ""),
+                        pendencias=body.get("pendencias") or [],
                     ),
                 })
 
